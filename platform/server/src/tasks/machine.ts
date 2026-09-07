@@ -1,5 +1,6 @@
-import type { EpcdResult, EpcdTool } from "../epcd/bridge.js";
+import type { EpcdConfig, EpcdResult, EpcdTool } from "../epcd/bridge.js";
 import type { Db } from "../db.js";
+import { handleOptimizationPhase } from "./optimizer.js";
 import {
   MILESTONE_BY_CODE,
   MILESTONES,
@@ -63,7 +64,12 @@ async function executePhase(
 }
 
 // 从当前阶段推进，直到里程碑暂停 / 完成 / 失败
-async function advance(db: Db, bridge: EpcdBridge, task: TaskRow): Promise<TaskRow> {
+async function advance(
+  db: Db,
+  bridge: EpcdBridge,
+  task: TaskRow,
+  epcdConfig: EpcdConfig
+): Promise<TaskRow> {
   let current = task;
   while (true) {
     const phase = current.current_phase as Phase;
@@ -71,6 +77,14 @@ async function advance(db: Db, bridge: EpcdBridge, task: TaskRow): Promise<TaskR
     if (phase === "deliver") {
       updateTask(db, current.id, { status: "delivered" });
       return getTask(db, current.id)!;
+    }
+
+    // optimization 阶段：后台 spawn，完成后轮询推进到 apply
+    if (phase === "optimization") {
+      const { advanced, task: next } = await handleOptimizationPhase(db, epcdConfig, current);
+      if (!advanced) return next; // 仍在后台运行（status=optimizing）
+      current = next; // 已完成，立即进入 apply
+      continue;
     }
 
     const outcome = await executePhase(db, current, phase, bridge);
@@ -100,14 +114,20 @@ async function advance(db: Db, bridge: EpcdBridge, task: TaskRow): Promise<TaskR
   }
 }
 
-export function startTask(db: Db, bridge: EpcdBridge, taskId: string): Promise<TaskRow> {
+export function startTask(
+  db: Db,
+  bridge: EpcdBridge,
+  epcdConfig: EpcdConfig,
+  taskId: string
+): Promise<TaskRow> {
   updateTask(db, taskId, { status: "running" });
-  return advance(db, bridge, getTask(db, taskId)!);
+  return advance(db, bridge, getTask(db, taskId)!, epcdConfig);
 }
 
 export async function confirmMilestone(
   db: Db,
   bridge: EpcdBridge,
+  epcdConfig: EpcdConfig,
   taskId: string,
   code: string,
   decision: MilestoneDecision,
@@ -127,7 +147,7 @@ export async function confirmMilestone(
         return getTask(db, taskId)!;
       }
       updateTask(db, taskId, { current_phase: next, status: "running" });
-      return advance(db, bridge, getTask(db, taskId)!);
+      return advance(db, bridge, getTask(db, taskId)!, epcdConfig);
     }
     case "modify": {
       updateMilestone(db, taskId, code, "modified", modifiedConfig ?? null);
@@ -137,7 +157,7 @@ export async function confirmMilestone(
       }
       // 回到该里程碑阶段重做，重新输出并再次暂停确认
       updateTask(db, taskId, { current_phase: ms.phase, status: "running" });
-      return advance(db, bridge, getTask(db, taskId)!);
+      return advance(db, bridge, getTask(db, taskId)!, epcdConfig);
     }
     case "abort": {
       updateMilestone(db, taskId, code, "aborted");

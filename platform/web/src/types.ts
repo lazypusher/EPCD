@@ -11,6 +11,7 @@ export type Phase =
 export type TaskStatus =
   | "created"
   | "running"
+  | "optimizing"
   | "awaiting_confirmation"
   | "confirmed"
   | "delivered"

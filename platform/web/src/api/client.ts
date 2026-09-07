@@ -48,4 +48,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ decision, config }),
     }),
+
+  cancelOptimization: (id: string) =>
+    request<{ ok: boolean; cancelRequested: boolean; taskId: string }>(
+      `/api/tasks/${id}/optimization/cancel`,
+      { method: "POST", body: "{}" }
+    ),
 };

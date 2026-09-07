@@ -73,7 +73,7 @@ export function createTask(
 
   // 初始化 4 个里程碑
   const ins = db.prepare(
-    `INSERT INTO milestone (task_id, code, phase, status) VALUES (?, ?, ?, 'pending')`
+    `INSERT INTO design_milestone (task_id, code, phase, status) VALUES (?, ?, ?, 'pending')`
   );
   for (const m of MILESTONES) ins.run(id, m.code, m.phase);
 
@@ -147,7 +147,7 @@ export function getPhaseLogs(db: Db, taskId: string): PhaseLogRow[] {
 
 export function getMilestones(db: Db, taskId: string): MilestoneRow[] {
   return db
-    .prepare(`SELECT * FROM milestone WHERE task_id = ? ORDER BY id ASC`)
+    .prepare(`SELECT * FROM design_milestone WHERE task_id = ? ORDER BY id ASC`)
     .all(taskId) as unknown as MilestoneRow[];
 }
 
@@ -159,7 +159,7 @@ export function updateMilestone(
   snapshot?: unknown
 ): void {
   db.prepare(
-    `UPDATE milestone SET status = ?, snapshot_json = ?, decided_at = ?
+    `UPDATE design_milestone SET status = ?, snapshot_json = ?, decided_at = ?
       WHERE task_id = ? AND code = ?`
   ).run(
     status,

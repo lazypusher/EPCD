@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { loadConfig } from "./epcd/bridge.js";
 import { openDb } from "./db.js";
 import { epcdRoutes } from "./routes/epcd.js";
+import { eventRoutes } from "./routes/events.js";
 import { taskRoutes } from "./routes/tasks.js";
 
 export function buildServer(): FastifyInstance {
@@ -19,6 +20,7 @@ export function buildServer(): FastifyInstance {
 
   void app.register(epcdRoutes);
   void app.register(taskRoutes, db);
+  void app.register(eventRoutes, db);
 
   return app;
 }

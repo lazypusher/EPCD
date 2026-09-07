@@ -9,6 +9,7 @@ import { PHASE_LABELS, type Phase } from "../types";
 const STATUS_COLOR: Record<TaskStatus, "done" | "warning" | "ongoing" | "error"> = {
   created: "ongoing",
   running: "ongoing",
+  optimizing: "ongoing",
   awaiting_confirmation: "warning",
   confirmed: "done",
   delivered: "done",

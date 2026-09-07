@@ -54,7 +54,7 @@ export async function taskRoutes(app: FastifyInstance, db: Db): Promise<void> {
     const { id } = req.params as { id: string };
     const task = getTask(db, id);
     if (!task) return reply.code(404).send({ ok: false, error: { message: "task not found" } });
-    const started = await startTask(db, bridgeFor(task), task.id);
+    const started = await startTask(db, bridgeFor(task), config, task.id);
     return { ok: true, ...taskContext(db, started.id) };
   });
 
@@ -76,6 +76,7 @@ export async function taskRoutes(app: FastifyInstance, db: Db): Promise<void> {
       const next = await confirmMilestone(
         db,
         bridgeFor(task),
+        config,
         task.id,
         code,
         body.decision,

@@ -40,7 +40,8 @@ export function migrate(db: Db): void {
     );
     CREATE INDEX IF NOT EXISTS idx_phase_log_task ON phase_log(task_id);
 
-    CREATE TABLE IF NOT EXISTS milestone (
+    -- 注意：不能叫 milestone —— epcd_agent store 在同库有同名表（不同字段）。
+    CREATE TABLE IF NOT EXISTS design_milestone (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       task_id       TEXT NOT NULL,
       code          TEXT NOT NULL,
@@ -49,6 +50,6 @@ export function migrate(db: Db): void {
       snapshot_json TEXT,
       decided_at    TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_milestone_task ON milestone(task_id);
+    CREATE INDEX IF NOT EXISTS idx_design_milestone_task ON design_milestone(task_id);
   `);
 }

@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { Button, JsonTree, Pill } from "@deepseek-ai/dsh-client-ui-primitives";
 import { api } from "../api/client";
 import { PhaseStepper } from "../components/PhaseStepper";
 import { MilestoneCard } from "../components/MilestoneCard";
+import { OptimizationPanel } from "../components/OptimizationPanel";
 import type { MilestoneCode, MilestoneDecision } from "../types";
 import { PHASE_LABELS } from "../types";
 
@@ -31,6 +33,24 @@ export function TaskDetail() {
       api.confirmMilestone(id, args.code, args.decision, args.config),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["task", id] }),
   });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [optimization, setOptimization] = useState<any>(null);
+
+  // 实时通道：running/optimizing 时订阅 SSE，收到状态推送 + 优化进度
+  useEffect(() => {
+    const status = data?.task.status;
+    if (status !== "optimizing" && status !== "running") return;
+    const es = new EventSource(`/api/tasks/${id}/events`);
+    es.addEventListener("status", (ev) => {
+      const snap = JSON.parse((ev as MessageEvent).data);
+      setOptimization(snap.optimization ?? null);
+      if (snap.task?.status !== "optimizing") {
+        qc.invalidateQueries({ queryKey: ["task", id] });
+      }
+    });
+    return () => es.close();
+  }, [id, data?.task.status, qc]);
 
   if (isLoading) return <div style={{ padding: 24 }}>加载中…</div>;
   if (isError || !data) return <div style={{ padding: 24 }}>任务不存在或加载失败。</div>;
@@ -61,6 +81,15 @@ export function TaskDetail() {
         <p style={{ color: "var(--dsw-text-secondary, #666)" }}>
           正在执行「{PHASE_LABELS[ctx.task.current_phase]}」阶段（自动轮询中）…
         </p>
+      )}
+
+      {ctx.task.status === "optimizing" && (
+        <div>
+          <p style={{ color: "var(--dsw-text-secondary, #666)" }}>
+            正在迭代优化（后台执行，SSE 实时更新）…
+          </p>
+          <OptimizationPanel taskId={id} snapshot={optimization} />
+        </div>
       )}
 
       {ctx.task.status === "awaiting_confirmation" && awaiting && (
