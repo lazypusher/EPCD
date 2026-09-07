@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh -o BatchMode=yes zhubo@192.168.20.243 \"/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default/ehouse/64bit/lmutil lmreread -c /home/zhubo/ninecube-fixed.lic && sleep 4 && tail -8 /home/zhubo/ninecube-lmgrd.log\")"
+    ]
+  }
+}

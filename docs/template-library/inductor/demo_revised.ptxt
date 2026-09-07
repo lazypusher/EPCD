@@ -1,0 +1,20 @@
+note process=_demo
+geom scale=0.9
+set micron
+set ohm/sq
+set ohm/via
+def subthick=50.0
+def fillsize=0.0
+def metal1=fill(l65t0, fillsize)
+def metal2=fill(l32t0, 0.1)
+def via1=merge(l51t0, 0.072*2)
+
+layer th=subthick k=11.9 sigma=0.0001 S/m name=substrate
+layer th=0.047 k=2.63 name=IMD1b
+layer th=0.5 k=5.5 name=IMD1c
+metal th=0.2 sheet_resistance=0.02 name=metal1
+layer th=0.4 k=4.3 name=IMD1d
+metal th=0.4 sheet_resistance=0.01 name=metal2
+layer th=0.7 k=7.1 name=PASS4
+layer th=infinity k=1.0 name=air
+via lower=metal1 upper=metal2 resistance=0.01 name=via1

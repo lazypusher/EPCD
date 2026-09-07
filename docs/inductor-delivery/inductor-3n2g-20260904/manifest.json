@@ -1,0 +1,82 @@
+{
+  "artifacts": [
+    {
+      "mediaType": "application/octet-stream",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/synthesis/AdvSimpleInd/AdvSimpleInd.gds",
+      "sha256": "7960398fd237d661ab2fdf8b18d7d70fd12ab77a9940148826de977be7a0e7b7",
+      "size": 1246,
+      "type": "gds"
+    },
+    {
+      "mediaType": "application/json",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/test_pmrg.gtxt",
+      "sha256": "657fe8fc06c7a443f9c08a5ebadd06650d84c6d242ddcbababd1d25c7aa1cf0e",
+      "size": 956,
+      "type": "gtxt"
+    },
+    {
+      "mediaType": "image/png",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/.epcd-cli/runs/82f98371-3d7d-48d3-b4ef-ef1264da3ee1/artifacts/gtxt-preview/test_pmrg/preview_top.png",
+      "sha256": "f581f3170c9c280e3e98a1deca972919bd484401ac12375daed80cf6253a791d",
+      "size": 9523,
+      "type": "layout-preview-image"
+    },
+    {
+      "mediaType": "image/png",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/.epcd-cli/runs/82f98371-3d7d-48d3-b4ef-ef1264da3ee1/artifacts/gtxt-preview/test_pmrg/preview_iso.png",
+      "sha256": "c0cc888ac6855200b46aa606d0efb89a8139b749d53b964f4883d135a4458706",
+      "size": 430575,
+      "type": "layout-preview-image"
+    },
+    {
+      "mediaType": "image/png",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/.epcd-cli/runs/82f98371-3d7d-48d3-b4ef-ef1264da3ee1/artifacts/gtxt-preview/test_pmrg/preview_side.png",
+      "sha256": "cf7e94dbe6c521037c30b1e76b9e3fec98543ab6ae86d624f048e9c512ec1853",
+      "size": 25026,
+      "type": "layout-preview-image"
+    },
+    {
+      "mediaType": "application/json",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/.epcd-cli/runs/82f98371-3d7d-48d3-b4ef-ef1264da3ee1/artifacts/gtxt-preview/test_pmrg/scene.json",
+      "sha256": "b6acc929b880247a1546c476313a0d122c311b71bdd00ece20c11bd82d8af8de",
+      "size": 4657,
+      "type": "gtxt-scene"
+    },
+    {
+      "mediaType": "application/octet-stream",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/synthesis/RangeEM/graphs.s2p",
+      "sha256": "7f15b1f4ee3500be38ac3d9c11c7bae461c528dc1b974e839ae3b1efc6e50b2a",
+      "size": 1150,
+      "type": "snp"
+    },
+    {
+      "mediaType": "application/json",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/.epcd-cli/runs/82f98371-3d7d-48d3-b4ef-ef1264da3ee1/artifacts/target-values.json",
+      "sha256": "954f8c03534bc54a11e348b63cfdc3d508ba959e3fa74ba97e0ebe1e7884d6d0",
+      "size": 808,
+      "type": "target-values"
+    },
+    {
+      "mediaType": "image/svg+xml",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/.epcd-cli/runs/82f98371-3d7d-48d3-b4ef-ef1264da3ee1/artifacts/target-chart.svg",
+      "sha256": "355e7ecfb80d2d36e69d259d02ea89b75c5baf566126f44d9231cd2dd8062b93",
+      "size": 1250,
+      "type": "target-chart"
+    },
+    {
+      "mediaType": "image/png",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/.epcd-cli/runs/82f98371-3d7d-48d3-b4ef-ef1264da3ee1/artifacts/target-chart.png",
+      "sha256": "0c33c0214efd7a8c4b649a7f071f79da0117c93086e34e2725e2ada04dde3394",
+      "size": 32439,
+      "type": "target-chart"
+    },
+    {
+      "mediaType": "text/plain",
+      "path": "/home/zhubo/epcd-runs/inductor-design/adv-3n2g/synthesis/BestResult.txt",
+      "sha256": "d12f579862d191406f8aac88ca5cb041efee3407362c0d6ffda9241c1e6a530c",
+      "size": 524,
+      "type": "best-result"
+    }
+  ],
+  "schemaVersion": "epcd-artifacts/v1"
+}

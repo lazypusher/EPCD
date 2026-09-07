@@ -1,0 +1,129 @@
+# Multi-frequency experiment config — simple_inductor / adv_simple_inductor.
+# Objectives: Inductance =2.1nH + Min Q >8 at 1.5/2.0/2.5/3.0 GHz; Max Size once.
+# force_sweep derives a minimal band 1.5..3.0GHz @0.5GHz (exactly the 4 target
+# points), so the EM evaluates every objective frequency deterministically.
+
+[server]
+ssh_host = "zhubo@192.168.20.243"
+pkg_root = "/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default"
+technology = "/home/zhubo/demo_revised.ptxt"
+work_dir_root = "/home/zhubo/epcd-runs"
+
+category = "inductor"
+
+[[templates]]
+id = 1
+name = "simple_inductor"
+template_id = "system.inductor.simple_inductor"
+
+[[templates]]
+id = 2
+name = "adv_simple_inductor"
+template_id = "system.inductor.adv_simple_inductor"
+
+[[templates]]
+id = 3
+name = "bowtie_inductor"
+template_id = "system.inductor.bowtie_inductor"
+
+[[templates]]
+id = 4
+name = "differential_inductor"
+template_id = "system.inductor.differential_inductor"
+
+[[templates]]
+id = 5
+name = "differential_inductor_step"
+template_id = "system.inductor.differential_inductor_step"
+
+[[templates]]
+id = 6
+name = "stack_inductor"
+template_id = "system.inductor.stack_inductor"
+
+[[templates]]
+id = 7
+name = "stack_inductor_overlapped"
+template_id = "system.inductor.stack_inductor_overlapped"
+
+[optimizer]
+max_rounds = 20
+startup_trials = [3, 5, 10]
+seed = 20260817
+max_wall_seconds = 3600.0
+
+[simulation]
+force_sweep = true   # minimal band over the objective freqs (4 target points)
+
+[objectives]
+frequency_mode = "points"
+
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 1.5, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 1.5, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 2.0, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 2.0, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 2.5, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 2.5, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 3.0, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 3.0, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Max Size(um)"
+frequency = { mode = "point", value = 2.5, unit = "GHz" }
+comparison = "less-than"
+targetValue = 300
+unit = "um"
+weight = 1
+
+[output]
+out_dir = "collect-out-mf"
+
+[cleanup]
+delete_run_dirs = true

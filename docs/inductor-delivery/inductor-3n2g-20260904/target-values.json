@@ -1,0 +1,53 @@
+{
+  "targetValues": [
+    {
+      "metric": "L",
+      "frequency": {
+        "value": 2.0,
+        "unit": "GHz",
+        "valueHz": 2000000000
+      },
+      "comparison": "equal",
+      "targetValue": 3.0,
+      "actualValue": 3.013237609612412,
+      "unit": "-",
+      "weight": 1.0,
+      "satisfied": true,
+      "relativeDeviation": 0.004413,
+      "objectiveCost": 0.004412536537470609
+    },
+    {
+      "metric": "Q",
+      "frequency": {
+        "value": 2.0,
+        "unit": "GHz",
+        "valueHz": 2000000000
+      },
+      "comparison": "greater-than",
+      "targetValue": 10.0,
+      "actualValue": 10.941909910096351,
+      "unit": "-",
+      "weight": 1.0,
+      "satisfied": true,
+      "relativeDeviation": 0.094191,
+      "objectiveCost": -0.0941909910096351
+    },
+    {
+      "metric": "maxSize",
+      "frequency": {
+        "value": 2.0,
+        "unit": "GHz",
+        "valueHz": 2000000000
+      },
+      "comparison": "less-than",
+      "targetValue": 250.0,
+      "actualValue": 240.0,
+      "unit": "-",
+      "weight": 1.0,
+      "satisfied": true,
+      "relativeDeviation": 0.04,
+      "objectiveCost": -0.04
+    }
+  ],
+  "objectiveCost": -0.12978
+}

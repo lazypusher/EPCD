@@ -1,0 +1,42 @@
+# 每模板 TPE 最优设置（自动配置源，9 模板 540 轮实测）
+# 依据：tpe-tuning-9template-20260903.md。collect_sim_data.py 选中模板后按
+# templateId 自动读取本文件覆盖 startup_trials；max_rounds 仅作推荐（最终轮数
+# 由用户设定：config [optimizer].max_rounds 或 --max-rounds）。
+# 优先级：--startup-trials 显式 > config [optimizer].startup_trials > 本文件 > 默认 [3]
+# 注意：键必须用双引号包裹（点号会被 TOML 展开成嵌套表）。
+
+["system.inductor.simple_inductor"]
+startup_trials = 3
+max_rounds = 10
+
+["system.inductor.adv_simple_inductor"]
+startup_trials = 5
+max_rounds = 15
+
+["system.inductor.bowtie_inductor"]
+startup_trials = 3
+max_rounds = 10
+
+["system.inductor.stack_inductor"]
+startup_trials = 10
+max_rounds = 20
+
+["system.inductor.differential_inductor"]
+startup_trials = 10
+max_rounds = 15
+
+["system.inductor.differential_inductor_step"]
+startup_trials = 10
+max_rounds = 15
+
+["system.inductor.stack_inductor_overlapped"]
+startup_trials = 10
+max_rounds = 15
+
+["system.tcoil.tcoil_inductor_oct"]
+startup_trials = 10
+max_rounds = 15
+
+["system.tcoil.tcoil_inductor_rec"]
+startup_trials = 3
+max_rounds = 10

@@ -1,0 +1,21 @@
+; # *** Module Synthesis/Simulation Result ***
+; [GEOMETRY]
+	trackWidth = 12.0
+	trackSpace = 2.0
+	numOfTurns = 3.5
+	innerRadius = 66.0
+; [END_GEOMETRY]
+; [BASICINFO]
+	TYPE = ADV Simple Inductor
+	Layer = metal2
+	Layer Cross = metal1
+	Aspect Ratio = 1.0
+	Stack Option = End Connect
+	Start Point = Center
+	Coplanar Pass(um) = 10.0
+	Under Pass(um) = 10.0
+	Width Step = 0
+; [END_BASICINFO]
+; [S-PARAMETER FILENAME]
+	SFILE = /home/zhubo/epcd-runs/inductor-design/adv-3n2g/synthesis/RangeEM/graphs.s2p
+; [END-S-PARAMETER FILENAME]

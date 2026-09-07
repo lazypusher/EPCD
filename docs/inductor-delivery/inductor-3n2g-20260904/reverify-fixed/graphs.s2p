@@ -1,0 +1,8 @@
+! Touchstone file from ewave
+! Pin data
+! Port[1] = T1 | ref
+! Port[2] = T2 | ref
+! ewave was run as: /package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default/ehouse/64bit/ewave --nogui --edgeMesh --meshFile --dllmode=1 --sparam=graphs -p P001=T1 -p P002=T2 -i P001 -i P002 --top=AdvSimpleInd__p__12_2_3p5_66 --discreteFreq=2.0 --workDir="/home/zhubo/epcd-runs/inductor-design/adv-3n2g/synthesis/RangeEM" --emssTechFile="/home/zhubo/epcd-runs/inductor-design/demo_revised.ptxt" --gds="/home/zhubo/epcd-runs/inductor-design/adv-3n2g/synthesis/RangeEM/AdvSimpleInd__p__12_2_3p5_66.gds" --edgeDist="*,0.5" --vertDist="*,0.5" --parallel=8 --relativeTolerance=1e-05 --maxIterNum=1000 --freqParallel=1 --relativeCurrentTolerance=0.001 --viaMode="*,0" --solveForS --includeCommandLine --includePortOrder=1 --noEdgeMeshLayer=0 --maxFactor="*,8" --maxSplits="*,9"
+# HZ   S   RI   R    50 
+! freq       reS11      imS11     reS21      imS21     reS12      imS12     reS22      imS22
+2.000000000e+09 	 1.44180729e-01 2.69422103e-01 8.54947487e-01 -3.46693061e-01 8.54947487e-01 -3.46693061e-01 1.39968509e-01 2.71453338e-01

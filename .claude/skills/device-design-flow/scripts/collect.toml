@@ -1,0 +1,134 @@
+# collect.toml — config for scripts/collect_sim_data.py
+#
+# All configurable inputs live here. Edit this file; do NOT pass flags for
+# things that belong here. Run:
+#   MSYS_NO_PATHCONV=1 ./.venv/Scripts/python scripts/collect_sim_data.py \
+#       --config scripts/collect.toml --template 1
+#
+# MSYS_NO_PATHCONV=1 is REQUIRED under Git Bash (it stops MSYS rewriting
+# /package/... and /home/... into Windows paths). Export it once in the shell.
+
+[server]
+# Remote SSH host + epcd-cli package root. Env vars EPCD_SSH_HOST /
+# EPCD_PKG_ROOT override these when present (so the same config works with a
+# local epcd-cli if both are unset).
+ssh_host = "zhubo@192.168.20.243"
+pkg_root = "/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default"
+# Remote path to the .ptxt process/technology file (must be readable on the
+# server; scp it first if it is a local file). Baseline: demo_revised.ptxt.
+technology = "/home/zhubo/demo_revised.ptxt"
+# Parent of per-run project dirs (a fresh subdir is created per startup_trials
+# run, since project init is not idempotent across reuses).
+work_dir_root = "/home/zhubo/epcd-runs"
+
+# Device category to filter the template list.
+category = "inductor"
+
+# Template numeric id <-> real templateId (1:1, req 1a). --template takes the
+# id (number) or the name. The id is validated against the LIVE template list
+# at run start, so a stale entry fails loudly.
+[[templates]]
+id = 1
+name = "simple_inductor"
+template_id = "system.inductor.simple_inductor"
+
+[[templates]]
+id = 2
+name = "adv_simple_inductor"
+template_id = "system.inductor.adv_simple_inductor"
+
+[[templates]]
+id = 3
+name = "bowtie_inductor"
+template_id = "system.inductor.bowtie_inductor"
+
+[[templates]]
+id = 4
+name = "differential_inductor"
+template_id = "system.inductor.differential_inductor"
+
+[[templates]]
+id = 5
+name = "differential_inductor_step"
+template_id = "system.inductor.differential_inductor_step"
+
+[[templates]]
+id = 6
+name = "stack_inductor"
+template_id = "system.inductor.stack_inductor"
+
+[[templates]]
+id = 7
+name = "stack_inductor_overlapped"
+template_id = "system.inductor.stack_inductor_overlapped"
+
+[optimizer]
+# TPE core params (req 1c). startup_trials is an ARRAY: the script runs one
+# full max_rounds optimization PER value, then compares them in a table —
+# this is the batch validation that lets you tune the startup setting.
+max_rounds = 20
+startup_trials = [3, 5, 10]
+seed = 20260817
+max_wall_seconds = 3600.0
+
+# Objectives (req 1b). DEFAULTS = the epcd-cli interface built-ins, read live
+# from `config schema` (Inductance Value(nH) / Min Q Factor / Max Size(um)
+# @2.5GHz). To use the defaults, leave this section as-is (no [[objectives.items]]).
+# To override, uncomment [[objectives.items]] and define your own. frequency
+# mode can be "point" (single freq) or "range" (min..max).
+#
+# Sweep derivation (req #2): only range-mode objectives produce a sweep;
+# point-mode objectives get NO sweep. So the default (point @2.5) runs without
+# a sweep.
+#
+# [[objectives.items]]
+# metric = "Inductance Value(nH)"
+# frequency = { mode = "point", value = 2.4, unit = "GHz" }
+# comparison = "equal"
+# targetValue = 2.1
+# unit = "nH"
+# weight = 5
+#
+# [[objectives.items]]
+# metric = "Min Q Factor"
+# frequency = { mode = "point", value = 2.4, unit = "GHz" }
+# comparison = "greater-than"
+# targetValue = 8
+# unit = ""
+# weight = 1
+#
+# Range-mode example (this one WOULD produce a sweep over 1..3GHz):
+# [[objectives.items]]
+# metric = "Min Q Factor"
+# frequency = { mode = "range", minimum = 1.0, step = 0.1, maximum = 3.0, unit = "GHz" }
+# comparison = "greater-than"
+# targetValue = 20
+# unit = ""
+# weight = 8
+#
+# Optional L/Q-formula injection (scoring unlock; only needed on builds whose
+# built-in metrics don't export L/Q targetValues — try WITHOUT it first).
+# [[objectives.custom_metrics]]
+# name = "inductance"
+# expression = "Im(Z(1,1))/(2*3.14159*2.4e9)"
+# target = "2.1"
+# weight = "1"
+# comparison = "greater-than"
+# unit = "1"
+# [[objectives.custom_metrics]]
+# name = "minQFactor"
+# expression = "Im(Z(1,1))/Re(Z(1,1))"
+# target = "8"
+# weight = "1"
+# comparison = "greater-than"
+# unit = "1"
+
+[output]
+out_dir = "collect-out"
+# tag = "my-run"   # default: collect-<ts>-<rand>
+
+[cleanup]
+# Delete each job's remote runDirectory after fetching its result (req #3).
+# Results (targetValues/objectiveCost) are captured locally first, so the
+# server keeps no intermediate EM products. --no-cleanup overrides this.
+delete_run_dirs = true
