@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
 import { getPhaseLogs } from "../tasks/store.js";
 
-interface ArtifactCard {
+export interface ArtifactCard {
   type: string;
   title: string;
   remotePath?: string | null;
@@ -16,7 +16,7 @@ interface DeliveryPayload {
   cards: ArtifactCard[];
 }
 
-function getDeliveryPayload(db: Db, taskId: string): DeliveryPayload | null {
+export function getDeliveryPayload(db: Db, taskId: string): DeliveryPayload | null {
   const logs = getPhaseLogs(db, taskId);
   for (let i = logs.length - 1; i >= 0; i--) {
     const l = logs[i];
@@ -34,7 +34,7 @@ function getDeliveryPayload(db: Db, taskId: string): DeliveryPayload | null {
   return null;
 }
 
-function readObjectiveValues(cards: ArtifactCard[]) {
+export function readObjectiveValues(cards: ArtifactCard[]) {
   const card = cards.find((c) => c.type === "objective-values" && c.localPath);
   if (!card?.localPath || !existsSync(card.localPath)) return null;
   try {

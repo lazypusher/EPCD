@@ -93,4 +93,9 @@ export const api = {
     request<{ ok: boolean; servers: { name: string; ssh?: string; pkg?: string }[] }>(
       "/api/servers"
     ),
+
+  getAdvice: (id: string) =>
+    request<{ ok: boolean; source: "llm" | "rule"; advice: string[]; unmet: unknown[] }>(
+      `/api/tasks/${id}/advice`
+    ),
 };

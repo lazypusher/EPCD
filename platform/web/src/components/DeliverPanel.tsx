@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { api } from "../api/client";
 import type { ArtifactCard, Delivery } from "../types";
@@ -20,6 +21,13 @@ export function DeliverPanel({ taskId, delivery }: { taskId: string; delivery: D
   const images = delivery.cards.filter((c) => IMAGE_TYPES.has(c.type));
   const files = delivery.cards.filter((c) => !IMAGE_TYPES.has(c.type));
   const allSatisfied = metrics?.targetValues.every((m) => m.satisfied) ?? false;
+  const hasUnsatisfied = metrics ? metrics.targetValues.some((m) => !m.satisfied) : false;
+
+  const adviceQ = useQuery({
+    queryKey: ["advice", taskId],
+    queryFn: () => api.getAdvice(taskId),
+    enabled: hasUnsatisfied,
+  });
 
   return (
     <div>
@@ -74,6 +82,36 @@ export function DeliverPanel({ taskId, delivery }: { taskId: string; delivery: D
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {hasUnsatisfied && (
+        <section
+          style={{
+            margin: "12px 0",
+            border: "1px solid var(--dsw-border, #ccc)",
+            borderRadius: 10,
+            padding: 12,
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>
+            优化建议
+            {adviceQ.data && (
+              <span style={{ fontSize: 12, marginLeft: 10, color: "var(--dsw-text-tertiary, #888)" }}>
+                {adviceQ.data.source === "llm" ? "LLM 生成" : "规则建议"}
+              </span>
+            )}
+          </h3>
+          {adviceQ.isLoading && <p>生成建议中…</p>}
+          {adviceQ.data && (
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {adviceQ.data.advice.map((a, i) => (
+                <li key={i} style={{ marginBottom: 6 }}>
+                  {a}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 

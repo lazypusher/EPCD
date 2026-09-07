@@ -52,6 +52,10 @@ export interface EpcdConfig {
   dbPath: string;
   defaultServer: string;
   artifactsDir: string;
+  // 可选的 LLM 辅助建议（OpenAI-compatible，缺省走规则建议）
+  llmBaseUrl?: string;
+  llmKey?: string;
+  llmModel?: string;
 }
 
 export function loadConfig(): EpcdConfig {
@@ -73,7 +77,16 @@ export function loadConfig(): EpcdConfig {
   const artifactsDir =
     process.env.EPCD_ARTIFACTS ??
     path.join(repoRoot, "platform", "server", "data", "artifacts");
-  return { backendDir, python, dbPath, defaultServer, artifactsDir };
+  return {
+    backendDir,
+    python,
+    dbPath,
+    defaultServer,
+    artifactsDir,
+    llmBaseUrl: process.env.EPCD_LLM_BASE_URL,
+    llmKey: process.env.EPCD_LLM_API_KEY,
+    llmModel: process.env.EPCD_LLM_MODEL ?? "deepseek-chat",
+  };
 }
 
 // 全局共享服务器池：读 backend/servers.json（admin 维护，运行时不变更）
