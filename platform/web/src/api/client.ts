@@ -1,10 +1,21 @@
 import type { MilestoneDecision, MilestoneCode, TaskContext } from "../types";
+import { clearAuth, getToken } from "../auth";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const resp = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
+  if (resp.status === 401 && !path.startsWith("/api/auth/")) {
+    clearAuth();
+    window.location.href = "/login";
+    throw new Error("未登录或登录已过期");
+  }
   const body = await resp.json().catch(() => null);
   if (!resp.ok && body && "error" in body) {
     const err = body as { error?: { message?: string } };
@@ -61,4 +72,25 @@ export const api = {
 
   artifactUrl: (id: string, file: string) =>
     `/api/tasks/${id}/artifacts/${encodeURIComponent(file)}`,
+
+  login: (username: string, password: string) =>
+    request<{ ok: boolean; token?: string; user?: { id: string; username: string; role: string } }>(
+      "/api/auth/login",
+      { method: "POST", body: JSON.stringify({ username, password }) }
+    ),
+
+  register: (username: string, password: string) =>
+    request<{ ok: boolean; token?: string; user?: { id: string; username: string; role: string } }>(
+      "/api/auth/register",
+      { method: "POST", body: JSON.stringify({ username, password }) }
+    ),
+
+  me: () => request<{ ok: boolean; user: { id: string; username: string; role: string } | null }>(
+    "/api/auth/me"
+  ),
+
+  listServers: () =>
+    request<{ ok: boolean; servers: { name: string; ssh?: string; pkg?: string }[] }>(
+      "/api/servers"
+    ),
 };

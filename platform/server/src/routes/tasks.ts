@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
+import { requireAuth, type AppUser } from "../auth.js";
 import { loadConfig, runEpcdTool, type EpcdTool } from "../epcd/bridge.js";
 import {
   confirmMilestone,
@@ -24,6 +25,9 @@ export async function taskRoutes(app: FastifyInstance, db: Db): Promise<void> {
       config
     );
 
+  // 所有 /api/tasks* 需要登录（Bearer token）
+  app.addHook("preHandler", requireAuth(db));
+
   app.post("/api/tasks", async (req, reply) => {
     const body = (req.body ?? {}) as {
       name?: string;
@@ -33,15 +37,20 @@ export async function taskRoutes(app: FastifyInstance, db: Db): Promise<void> {
     if (!body.name) {
       return reply.code(400).send({ ok: false, error: { message: "name required" } });
     }
+    const user = (req as { user?: AppUser }).user!;
     const task = createTask(db, {
       name: body.name,
       server: body.server ?? config.defaultServer,
       config: body.config ?? {},
+      userId: user.id,
     });
     return { ok: true, task: taskContext(db, task.id) };
   });
 
-  app.get("/api/tasks", async () => ({ ok: true, tasks: listTasks(db) }));
+  app.get("/api/tasks", async (req) => {
+    const user = (req as { user?: AppUser }).user!;
+    return { ok: true, tasks: listTasks(db, user.id, user.role === "admin") };
+  });
 
   app.get("/api/tasks/:id", async (req, reply) => {
     const { id } = req.params as { id: string };

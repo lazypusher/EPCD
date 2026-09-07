@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button, Input, Pill, StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { api } from "../api/client";
+import { clearAuth, getUser } from "../auth";
 import type { TaskStatus } from "../types";
 import { PHASE_LABELS, type Phase } from "../types";
 
@@ -19,7 +20,10 @@ const STATUS_COLOR: Record<TaskStatus, "done" | "warning" | "ongoing" | "error">
 
 export function TaskList() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const user = getUser();
   const { data } = useQuery({ queryKey: ["tasks"], queryFn: api.listTasks });
+  const { data: serversData } = useQuery({ queryKey: ["servers"], queryFn: api.listServers });
 
   const [name, setName] = useState("");
   const [server, setServer] = useState("epcd-primary");
@@ -52,7 +56,22 @@ export function TaskList() {
 
   return (
     <div style={{ padding: 24, maxWidth: 920 }}>
-      <h1>EPCD 器件设计平台</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <h1 style={{ margin: 0 }}>EPCD 器件设计平台</h1>
+        <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--dsw-text-secondary, #666)" }}>
+          {user?.username} {user?.role === "admin" ? "（管理员）" : ""}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            clearAuth();
+            navigate("/login");
+          }}
+        >
+          退出
+        </Button>
+      </div>
 
       <section
         style={{
@@ -70,7 +89,23 @@ export function TaskList() {
           </label>
           <label>
             服务器
-            <Input value={server} onChange={(e) => setServer(e.target.value)} />
+            <select
+              value={server}
+              onChange={(e) => setServer(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px",
+                fontSize: 14,
+                borderRadius: 6,
+                border: "1px solid var(--dsw-border, #ccc)",
+              }}
+            >
+              {(serversData?.servers ?? [{ name: "epcd-primary" }]).map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             远端工作目录 *

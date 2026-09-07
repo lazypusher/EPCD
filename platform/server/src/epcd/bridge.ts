@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,6 +74,29 @@ export function loadConfig(): EpcdConfig {
     process.env.EPCD_ARTIFACTS ??
     path.join(repoRoot, "platform", "server", "data", "artifacts");
   return { backendDir, python, dbPath, defaultServer, artifactsDir };
+}
+
+// 全局共享服务器池：读 backend/servers.json（admin 维护，运行时不变更）
+export interface ServerEntry {
+  name: string;
+  ssh?: string;
+  pkg?: string;
+}
+
+export function loadServers(config: EpcdConfig): ServerEntry[] {
+  const file = path.join(config.backendDir, "servers.json");
+  try {
+    const json = JSON.parse(readFileSync(file, "utf8")) as {
+      servers?: Record<string, { ssh?: string; pkg?: string }>;
+    };
+    return Object.entries(json.servers ?? {}).map(([name, v]) => ({
+      name,
+      ssh: v.ssh,
+      pkg: v.pkg,
+    }));
+  } catch {
+    return [{ name: config.defaultServer }];
+  }
 }
 
 // ---------------------------------------------------------------------------

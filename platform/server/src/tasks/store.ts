@@ -87,7 +87,12 @@ export function getTask(db: Db, id: string): TaskRow | undefined {
     | undefined;
 }
 
-export function listTasks(db: Db): TaskRow[] {
+export function listTasks(db: Db, userId?: string, includeAll = false): TaskRow[] {
+  if (userId && !includeAll) {
+    return db
+      .prepare(`SELECT * FROM design_task WHERE user_id = ? ORDER BY created_at DESC`)
+      .all(userId) as unknown as TaskRow[];
+  }
   return db
     .prepare(`SELECT * FROM design_task ORDER BY created_at DESC`)
     .all() as unknown as TaskRow[];

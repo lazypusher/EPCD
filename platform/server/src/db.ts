@@ -51,5 +51,22 @@ export function migrate(db: Db): void {
       decided_at    TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_design_milestone_task ON design_milestone(task_id);
+
+    CREATE TABLE IF NOT EXISTS app_user (
+      id            TEXT PRIMARY KEY,
+      username      TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role          TEXT NOT NULL DEFAULT 'user',
+      created_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_app_user_username ON app_user(username);
+
+    CREATE TABLE IF NOT EXISTS auth_token (
+      token      TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_token_user ON auth_token(user_id);
   `);
 }
