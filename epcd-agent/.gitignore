@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+*.sqlite3
+artifacts-cache/
+dsh-smoke-1-artifacts/
+.pytest-tmp/
+.t/

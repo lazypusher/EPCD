@@ -1,0 +1,42 @@
+# Smoke-test config: range-mode objective paired with a derived sweep.
+# objectives are FULLY overridden (built-in defaults NOT used).
+# Copy of server/optimizer/cleanup from collect.toml; only objectives differ.
+
+[server]
+ssh_host = "zhubo@192.168.20.243"
+pkg_root = "/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default"
+technology = "/home/zhubo/demo_revised.ptxt"
+work_dir_root = "/home/zhubo/epcd-runs"
+
+category = "inductor"
+
+[[templates]]
+id = 1
+name = "simple_inductor"
+template_id = "system.inductor.simple_inductor"
+
+[optimizer]
+max_rounds = 2
+startup_trials = [3]
+seed = 20260817
+max_wall_seconds = 900.0
+
+# range-mode objective → _build_sweeps derives a top-level sweep 1GHz..2GHz
+# step 0.1GHz (11 points). If the EM evaluates across the sweep and scores
+# every point, targetValues + objectiveCost should come back populated.
+[objectives]
+frequency_mode = "range"
+
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "range", minimum = 1.0, step = 0.1, maximum = 2.0, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 20
+unit = ""
+weight = 8
+
+[output]
+out_dir = "collect-out-rm"
+
+[cleanup]
+delete_run_dirs = true

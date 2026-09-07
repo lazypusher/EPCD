@@ -1,5 +1,5 @@
-# epcd-agent 是独立 git 仓库，独立历史，不纳入本仓库
-/epcd-agent/
-
 # 运行产物
 *.sqlite3
+
+# git 历史备份
+.git_backups/

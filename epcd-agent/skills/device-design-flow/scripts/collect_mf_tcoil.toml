@@ -1,0 +1,104 @@
+# Multi-frequency experiment — tcoil category (toroidal inductors).
+# tcoil_inductor_oct / tcoil_inductor_rec export Inductance Value(nH)/Min Q
+# (like simple_inductor) but live in the "tcoil" category. Same 4-freq
+# constraint + force_sweep minimal band.
+
+[server]
+ssh_host = "zhubo@192.168.20.243"
+pkg_root = "/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default"
+technology = "/home/zhubo/demo_revised.ptxt"
+work_dir_root = "/home/zhubo/epcd-runs"
+
+category = "tcoil"
+
+[[templates]]
+id = 1
+name = "tcoil_inductor_oct"
+template_id = "system.tcoil.tcoil_inductor_oct"
+
+[[templates]]
+id = 2
+name = "tcoil_inductor_rec"
+template_id = "system.tcoil.tcoil_inductor_rec"
+
+[optimizer]
+max_rounds = 20
+startup_trials = [3, 5, 10]
+seed = 20260817
+max_wall_seconds = 3600.0
+
+[simulation]
+force_sweep = true   # minimal band over the objective freqs (4 target points)
+
+[objectives]
+frequency_mode = "points"
+
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 1.5, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 1.5, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 2.0, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 2.0, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 2.5, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 2.5, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Inductance Value(nH)"
+frequency = { mode = "point", value = 3.0, unit = "GHz" }
+comparison = "equal"
+targetValue = 2.1
+unit = "nH"
+weight = 1
+[[objectives.items]]
+metric = "Min Q Factor"
+frequency = { mode = "point", value = 3.0, unit = "GHz" }
+comparison = "greater-than"
+targetValue = 8
+unit = ""
+weight = 1
+[[objectives.items]]
+metric = "Max Size(um)"
+frequency = { mode = "point", value = 2.5, unit = "GHz" }
+comparison = "less-than"
+targetValue = 300
+unit = "um"
+weight = 1
+
+[output]
+out_dir = "collect-out-mf-tco"
+
+[cleanup]
+delete_run_dirs = true
