@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { Button, JsonTree, Pill } from "@deepseek-ai/dsh-client-ui-primitives";
 import { api } from "../api/client";
+import { getToken } from "../auth";
 import { PhaseStepper } from "../components/PhaseStepper";
 import { MilestoneCard } from "../components/MilestoneCard";
 import { OptimizationPanel } from "../components/OptimizationPanel";
@@ -42,7 +43,7 @@ export function TaskDetail() {
   useEffect(() => {
     const status = data?.task.status;
     if (status !== "optimizing" && status !== "running") return;
-    const es = new EventSource(`/api/tasks/${id}/events`);
+    const es = new EventSource(`/api/tasks/${id}/events?token=${getToken() ?? ""}`);
     es.addEventListener("status", (ev) => {
       const snap = JSON.parse((ev as MessageEvent).data);
       setOptimization(snap.optimization ?? null);

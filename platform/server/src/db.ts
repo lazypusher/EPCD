@@ -68,5 +68,17 @@ export function migrate(db: Db): void {
       expires_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_auth_token_user ON auth_token(user_id);
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     TEXT,
+      username    TEXT,
+      action      TEXT NOT NULL,
+      target_type TEXT,
+      target_id   TEXT,
+      detail_json TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
   `);
 }

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
 import { requireAuth, type AppUser } from "../auth.js";
+import { recordAudit } from "../audit.js";
 import { loadConfig, runEpcdTool, type EpcdTool } from "../epcd/bridge.js";
 import {
   confirmMilestone,
@@ -44,6 +45,14 @@ export async function taskRoutes(app: FastifyInstance, db: Db): Promise<void> {
       config: body.config ?? {},
       userId: user.id,
     });
+    recordAudit(db, {
+      userId: user.id,
+      username: user.username,
+      action: "task.create",
+      targetType: "task",
+      targetId: task.id,
+      detail: { name: task.name, server: task.server },
+    });
     return { ok: true, task: taskContext(db, task.id) };
   });
 
@@ -63,7 +72,9 @@ export async function taskRoutes(app: FastifyInstance, db: Db): Promise<void> {
     const { id } = req.params as { id: string };
     const task = getTask(db, id);
     if (!task) return reply.code(404).send({ ok: false, error: { message: "task not found" } });
+    const user = (req as { user?: AppUser }).user!;
     const started = await startTask(db, bridgeFor(task), config, task.id);
+    recordAudit(db, { userId: user.id, username: user.username, action: "task.start", targetType: "task", targetId: id });
     return { ok: true, ...taskContext(db, started.id) };
   });
 
@@ -91,6 +102,15 @@ export async function taskRoutes(app: FastifyInstance, db: Db): Promise<void> {
         body.decision,
         body.config
       );
+      const user = (req as { user?: AppUser }).user!;
+      recordAudit(db, {
+        userId: user.id,
+        username: user.username,
+        action: `milestone.${body.decision}`,
+        targetType: "task",
+        targetId: id,
+        detail: { code },
+      });
       return { ok: true, ...taskContext(db, next.id) };
     } catch (err) {
       return reply.code(400).send({ ok: false, error: { message: String(err) } });

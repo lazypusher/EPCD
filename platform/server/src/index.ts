@@ -3,6 +3,7 @@ import { ensureAdmin } from "./auth.js";
 import { loadConfig } from "./epcd/bridge.js";
 import { openDb } from "./db.js";
 import { adviceRoutes } from "./routes/advice.js";
+import { adminRoutes } from "./routes/admin.js";
 import { artifactRoutes } from "./routes/artifacts.js";
 import { authRoutes } from "./routes/auth.js";
 import { epcdRoutes } from "./routes/epcd.js";
@@ -31,6 +32,7 @@ export function buildServer(): FastifyInstance {
   void app.register(eventRoutes, db);
   void app.register(artifactRoutes, db);
   void app.register(adviceRoutes, db);
+  void app.register(adminRoutes, db);
 
   return app;
 }

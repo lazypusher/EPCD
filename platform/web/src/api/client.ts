@@ -98,4 +98,21 @@ export const api = {
     request<{ ok: boolean; source: "llm" | "rule"; advice: string[]; unmet: unknown[] }>(
       `/api/tasks/${id}/advice`
     ),
+
+  adminUsers: () =>
+    request<{ ok: boolean; users: { id: string; username: string; role: string; created_at: string }[] }>(
+      "/api/admin/users"
+    ),
+
+  adminSetRole: (id: string, role: "user" | "admin") =>
+    request<{ ok: boolean }>(`/api/admin/users/${id}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+
+  adminAudit: (limit = 200) =>
+    request<{
+      ok: boolean;
+      events: { id: number; username: string | null; action: string; target_type: string | null; target_id: string | null; created_at: string }[];
+    }>(`/api/admin/audit?limit=${limit}`),
 };

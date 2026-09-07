@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
+import { requireAuth } from "../auth.js";
 import { getPhaseLogs } from "../tasks/store.js";
 
 export interface ArtifactCard {
@@ -67,6 +68,8 @@ function mimeFor(file: string): string {
 }
 
 export async function artifactRoutes(app: FastifyInstance, db: Db): Promise<void> {
+  app.addHook("preHandler", requireAuth(db));
+
   app.get("/api/tasks/:id/delivery", async (req) => {
     const { id } = req.params as { id: string };
     const delivery = getDeliveryPayload(db, id);

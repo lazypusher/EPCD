@@ -70,14 +70,36 @@ export function getUserByToken(db: Db, token: string): AppUser | null {
 }
 
 // 轻量鉴权中间件：校验 Bearer token，附加 req.user
+function extractToken(req: unknown): string {
+  const r = req as { headers: Record<string, string | undefined>; query?: unknown };
+  const auth = r.headers.authorization ?? "";
+  const q = r.query as { token?: string } | undefined;
+  const fromHeader = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  return fromHeader || (typeof q?.token === "string" ? q.token : "");
+}
+
 export function requireAuth(db: Db) {
   return async (req: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
-    const r = req as { headers: Record<string, string | undefined>; user?: AppUser };
-    const auth = r.headers.authorization ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    const user = token ? getUserByToken(db, token) : null;
+    const r = req as { user?: AppUser };
+    const user = getUserByToken(db, extractToken(req));
     if (!user) {
       return reply.code(401).send({ ok: false, error: { message: "未登录或 token 失效" } });
+    }
+    r.user = user;
+    return undefined;
+  };
+}
+
+// 管理员中间件：校验 token + admin 角色
+export function requireAdmin(db: Db) {
+  return async (req: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
+    const r = req as { user?: AppUser };
+    const user = getUserByToken(db, extractToken(req));
+    if (!user) {
+      return reply.code(401).send({ ok: false, error: { message: "未登录或 token 失效" } });
+    }
+    if (user.role !== "admin") {
+      return reply.code(403).send({ ok: false, error: { message: "需要管理员权限" } });
     }
     r.user = user;
     return undefined;

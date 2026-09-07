@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
+import { requireAuth, type AppUser } from "../auth.js";
+import { recordAudit } from "../audit.js";
 import { loadConfig } from "../epcd/bridge.js";
 import { taskContext } from "../tasks/machine.js";
 import {
@@ -11,6 +13,7 @@ import { getTask } from "../tasks/store.js";
 
 export async function eventRoutes(app: FastifyInstance, db: Db): Promise<void> {
   const config = loadConfig();
+  app.addHook("preHandler", requireAuth(db));
 
   // 每 1s 拉取任务上下文；若在优化中则顺带推进状态机（轮询 optimization_task）
   async function snapshot(id: string) {
@@ -64,6 +67,15 @@ export async function eventRoutes(app: FastifyInstance, db: Db): Promise<void> {
       return reply.code(400).send({ ok: false, error: { message: "no active optimization" } });
     }
     requestCancel(db, task.session, epcdTaskId);
+    const user = (req as { user?: AppUser }).user!;
+    recordAudit(db, {
+      userId: user.id,
+      username: user.username,
+      action: "optimization.cancel",
+      targetType: "task",
+      targetId: id,
+      detail: { taskId: epcdTaskId },
+    });
     return { ok: true, cancelRequested: true, taskId: epcdTaskId };
   });
 }

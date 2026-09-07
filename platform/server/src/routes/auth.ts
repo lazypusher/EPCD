@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
 import { createUser, getUserByToken, issueToken, verifyLogin, type AppUser } from "../auth.js";
+import { recordAudit } from "../audit.js";
 
 interface AuthBody {
   username?: string;
@@ -16,6 +17,7 @@ export async function authRoutes(app: FastifyInstance, db: Db): Promise<void> {
     const r = createUser(db, username, password);
     if (r.error) return reply.code(409).send({ ok: false, error: { message: r.error } });
     const token = issueToken(db, r.user!.id);
+    recordAudit(db, { userId: r.user!.id, username: r.user!.username, action: "auth.register" });
     return { ok: true, token, user: r.user };
   });
 
@@ -24,6 +26,7 @@ export async function authRoutes(app: FastifyInstance, db: Db): Promise<void> {
     const r = verifyLogin(db, username ?? "", password ?? "");
     if (r.error) return reply.code(401).send({ ok: false, error: { message: r.error } });
     const token = issueToken(db, r.user!.id);
+    recordAudit(db, { userId: r.user!.id, username: r.user!.username, action: "auth.login" });
     return { ok: true, token, user: r.user };
   });
 

@@ -61,6 +61,11 @@ export function TaskList() {
         <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--dsw-text-secondary, #666)" }}>
           {user?.username} {user?.role === "admin" ? "（管理员）" : ""}
         </span>
+        {user?.role === "admin" && (
+          <Link to="/admin" style={{ fontSize: 13 }}>
+            管理后台
+          </Link>
+        )}
         <Button
           variant="ghost"
           size="sm"
