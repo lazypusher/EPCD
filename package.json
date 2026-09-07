@@ -1,0 +1,14 @@
+{
+  "name": "epcd-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "platform/server",
+    "platform/web"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace @epcd/server",
+    "dev:web": "npm run dev --workspace @epcd/web",
+    "build": "npm run build --workspaces"
+  }
+}
