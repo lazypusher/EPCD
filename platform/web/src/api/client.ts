@@ -54,4 +54,11 @@ export const api = {
       `/api/tasks/${id}/optimization/cancel`,
       { method: "POST", body: "{}" }
     ),
+
+  getDelivery: (id: string) => request<{ ok: boolean } & import("../types").Delivery>(
+    `/api/tasks/${id}/delivery`
+  ),
+
+  artifactUrl: (id: string, file: string) =>
+    `/api/tasks/${id}/artifacts/${encodeURIComponent(file)}`,
 };

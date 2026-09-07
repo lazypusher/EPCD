@@ -80,3 +80,30 @@ export const PHASE_ORDER: Phase[] = [
   "final",
   "deliver",
 ];
+
+export interface ArtifactCard {
+  type: string;
+  title: string;
+  remotePath?: string | null;
+  localPath?: string | null;
+}
+
+export interface DeliveryMetric {
+  metric: string;
+  frequency?: { value: number; unit: string; valueHz?: number };
+  comparison: string;
+  targetValue: number;
+  actualValue: number;
+  unit: string;
+  weight: number;
+  satisfied: boolean;
+  relativeDeviation?: number;
+  objectiveCost?: number;
+}
+
+export interface Delivery {
+  delivered: boolean;
+  job_id: string | null;
+  cards: ArtifactCard[];
+  metrics: { targetValues: DeliveryMetric[]; objectiveCost?: number } | null;
+}

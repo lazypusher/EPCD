@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import { PhaseStepper } from "../components/PhaseStepper";
 import { MilestoneCard } from "../components/MilestoneCard";
 import { OptimizationPanel } from "../components/OptimizationPanel";
+import { DeliverPanel } from "../components/DeliverPanel";
 import type { MilestoneCode, MilestoneDecision } from "../types";
 import { PHASE_LABELS } from "../types";
 
@@ -51,6 +52,12 @@ export function TaskDetail() {
     });
     return () => es.close();
   }, [id, data?.task.status, qc]);
+
+  const deliveryQ = useQuery({
+    queryKey: ["delivery", id],
+    queryFn: () => api.getDelivery(id),
+    enabled: data?.task.status === "delivered",
+  });
 
   if (isLoading) return <div style={{ padding: 24 }}>加载中…</div>;
   if (isError || !data) return <div style={{ padding: 24 }}>任务不存在或加载失败。</div>;
@@ -115,6 +122,10 @@ export function TaskDetail() {
         <div style={{ margin: "12px 0" }}>
           <Pill active>状态：{ctx.task.status}</Pill>
         </div>
+      )}
+
+      {ctx.task.status === "delivered" && deliveryQ.data?.delivered && (
+        <DeliverPanel taskId={id} delivery={deliveryQ.data} />
       )}
 
       <h3>阶段日志</h3>

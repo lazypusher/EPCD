@@ -50,6 +50,7 @@ export interface EpcdConfig {
   python: string;
   dbPath: string;
   defaultServer: string;
+  artifactsDir: string;
 }
 
 export function loadConfig(): EpcdConfig {
@@ -68,7 +69,10 @@ export function loadConfig(): EpcdConfig {
     process.env.EPCD_DB ??
     path.join(repoRoot, "platform", "server", "data", "epcd-platform.sqlite3");
   const defaultServer = process.env.EPCD_SERVER ?? "epcd-primary";
-  return { backendDir, python, dbPath, defaultServer };
+  const artifactsDir =
+    process.env.EPCD_ARTIFACTS ??
+    path.join(repoRoot, "platform", "server", "data", "artifacts");
+  return { backendDir, python, dbPath, defaultServer, artifactsDir };
 }
 
 // ---------------------------------------------------------------------------

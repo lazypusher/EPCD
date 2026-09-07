@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { EpcdConfig, EpcdResult, EpcdTool } from "../epcd/bridge.js";
 import type { Db } from "../db.js";
 import { handleOptimizationPhase } from "./optimizer.js";
@@ -96,6 +97,20 @@ async function advance(
     }
 
     logPhase(db, current.id, phase, "succeeded", outcome.payload);
+
+    // final 阶段成功产出 job_id 后，装配 deliver 阶段的 artifact_view 输入
+    if (phase === "final") {
+      const jobId = (outcome.payload as { jobId?: string } | undefined)?.jobId;
+      if (jobId) {
+        const cfg = parseTaskConfig(current);
+        cfg.finalJobId = jobId;
+        cfg.deliverInput = {
+          job_id: jobId,
+          fetch_dir: path.join(epcdConfig.artifactsDir, current.id),
+        };
+        patchTaskConfig(db, current.id, cfg);
+      }
+    }
 
     const ms = MILESTONES.find((m) => m.phase === phase);
     if (ms) {

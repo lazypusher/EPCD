@@ -5,6 +5,7 @@ import { MILESTONES, type Phase } from "./phases.js";
 export type TaskStatus =
   | "created"
   | "running"
+  | "optimizing"
   | "awaiting_confirmation"
   | "confirmed"
   | "delivered"
