@@ -26,10 +26,10 @@
 
 ## 文件结构
 
-仓库根目录：`c:/Users/cube/Desktop/EPCD/epcd-agent/`（任务 1 中 `git init`）。
+仓库根目录：`c:/Users/cube/Desktop/EPCD/backend/`（任务 1 中 `git init`）。
 
 ```
-epcd-agent/
+backend/
 ├── pyproject.toml                 # 包定义 + pytest 配置
 ├── .gitignore
 ├── README.md
@@ -71,9 +71,9 @@ epcd-agent/
 ### Task 1: 仓库脚手架
 
 **Files:**
-- Create: `epcd-agent/pyproject.toml`、`epcd-agent/.gitignore`、`epcd-agent/README.md`
-- Create: `epcd-agent/src/epcd_agent/__init__.py`、`epcd-agent/src/epcd_agent/tools/__init__.py`、`epcd-agent/src/epcd_agent/optimizer/__init__.py`
-- Create: `epcd-agent/tests/test_scaffold.py`
+- Create: `backend/pyproject.toml`、`backend/.gitignore`、`backend/README.md`
+- Create: `backend/src/epcd_agent/__init__.py`、`backend/src/epcd_agent/tools/__init__.py`、`backend/src/epcd_agent/optimizer/__init__.py`
+- Create: `backend/tests/test_scaffold.py`
 
 **Interfaces:**
 - Consumes: 无（首个任务）

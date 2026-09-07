@@ -28,7 +28,7 @@ synthesisTargets.objectives 与顶层 customMetrics 的 patch 均不生效（rel
 
 ## skill / 脚本同步（复盘任务伴随更新）
 
-- `epcd-agent/skills/device-design-flow/SKILL.md`：M2 补"评分目标可由 objectives 直接生效、
+- `backend/skills/device-design-flow/SKILL.md`：M2 补"评分目标可由 objectives 直接生效、
   metric 用模板族名、customMetrics 仅放 /synthesisTargets 且勿与内置同名"；M5 补候选信封
   `epcd-candidate/v1`（手写 run 必带，否则静默跑默认几何）；M4 补验收口径。
 - `scripts/collect_sim_data.py`：custom_metrics_patch 顶层注入改为 `/synthesisTargets/customMetrics`

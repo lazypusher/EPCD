@@ -26,7 +26,7 @@ CSV+JSONL per startup_trials run, plus a cross-run comparison table (markdown +
 CSV) — one row per startup_trials value, comparing best_cost / best params /
 best L/Q@obj-freq / satisfied / elapsed.
 
-Usage (from epcd-agent/, Git Bash on Windows):
+Usage (from backend/, Git Bash on Windows):
   MSYS_NO_PATHCONV=1 ./.venv/Scripts/python scripts/collect_sim_data.py \
       --config scripts/collect.toml --template 1
 

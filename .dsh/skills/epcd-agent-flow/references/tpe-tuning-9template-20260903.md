@@ -50,7 +50,7 @@
 
 ## 5. 关联产物
 
-- 数据：`epcd-agent/collect-out-mf-{sim,adv,bow,stk,diff,dst,sov,tco-oct,tco-rec}/objectives_{0056e444,9d37bf9d}/{results.md, <tag>.csv}`
+- 数据：`backend/collect-out-mf-{sim,adv,bow,stk,diff,dst,sov,tco-oct,tco-rec}/objectives_{0056e444,9d37bf9d}/{results.md, <tag>.csv}`
 - 配置模板：`scripts/collect_mf.toml`（Inductance/MinQ 族）、`scripts/collect_mf_ld.toml`（Ld/Qd 族）、`scripts/collect_mf_tcoil.toml`（tcoil，category=tcoil；tcoil 模板是 Inductance/MinQ 指标但类别不同）、`scripts/collect_stack.toml`（stack 单频示例）
 - 工程修复：**category 须在 config 顶层**（`[server]` 内不算顶层，`cfg.get("category")` 得 None → 默认 inductor → tcoil 校验失败）。main 已兼容两处。
 - 相关记忆：[[epcd-collect-sim-data]]、[[epcd-license-blocker]]、[[epcd-process-baseline]]

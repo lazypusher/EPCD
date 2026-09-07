@@ -6,7 +6,7 @@ description: EPCD 标准器件设计全流程编排。用户用自然语言发�
 # Device Design Flow
 
 用户一句话发起设计后，按下列阶段推进。所有后端调用走单一 CLI 入口
-（工作目录 `epcd-agent/`）：
+（工作目录 `backend/`）：
 
     ./.venv/Scripts/python -m epcd_agent.cli --ssh zhubo@192.168.20.243 \
       --pkg /package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default \

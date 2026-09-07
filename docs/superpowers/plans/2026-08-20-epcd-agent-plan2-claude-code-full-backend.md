@@ -998,7 +998,7 @@ description: EPCD 标准器件设计全流程编排（4.1~4.15 + M1~M4 里程碑
 # Standard Optimize Flow
 
 用户一句话发起设计后，按下列阶段推进。所有后端调用走单一 CLI 入口
-（工作目录 `epcd-agent/`）：
+（工作目录 `backend/`）：
 
     ./.venv/Scripts/python -m epcd_agent.cli --ssh zhubo@192.168.20.243 \
       --pkg /package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default \
@@ -1113,7 +1113,7 @@ git commit -m "fix: adapt run/job/apply-result handling to real server contract"
 ### Task 8: 真实环境端到端冒烟验收（Claude Code 驱动，M1–M4）
 
 **Files:**
-- Create: `c:/Users/cube/Desktop/EPCD/epcd-agent/docs/plan2-real-run-report.md`
+- Create: `c:/Users/cube/Desktop/EPCD/backend/docs/plan2-real-run-report.md`
 
 **Interfaces:**
 - Consumes: 任务 1~7 全部产物 + skill `standard-optimize-flow`。
@@ -1121,7 +1121,7 @@ git commit -m "fix: adapt run/job/apply-result handling to real server contract"
 
 - [ ] **Step 1: 全新会话准备**
 
-新工程目录 `/home/zhubo/epcd-runs/plan2-acceptance`；本地会话 db `epcd-agent/acceptance.sqlite3`，`--session acceptance`。
+新工程目录 `/home/zhubo/epcd-runs/plan2-acceptance`；本地会话 db `backend/acceptance.sqlite3`，`--session acceptance`。
 
 - [ ] **Step 2: 按 skill 逐阶段执行（阶段 1~4）**
 
@@ -1137,7 +1137,7 @@ git commit -m "fix: adapt run/job/apply-result handling to real server contract"
 
 - [ ] **Step 5: M4 + 最终仿真 + 交付（阶段 7~8）**
 
-**M4 AskUserQuestion** → final run（`request_id="final-<best-job-id>"`，不带 input）→ `artifact_view`（fetch_dir=`epcd-agent/artifacts-cache/acceptance`）→ 核对 artifacts 类型覆盖（GDS/Gtxt/PNG/SNP/目标值/Manifest，以实际返回为准）。
+**M4 AskUserQuestion** → final run（`request_id="final-<best-job-id>"`，不带 input）→ `artifact_view`（fetch_dir=`backend/artifacts-cache/acceptance`）→ 核对 artifacts 类型覆盖（GDS/Gtxt/PNG/SNP/目标值/Manifest，以实际返回为准）。
 
 - [ ] **Step 6: 写验收报告并提交**
 
@@ -1153,7 +1153,7 @@ git commit -m "docs: Plan 2 real-environment end-to-end acceptance report"
 ### Task 9: 文档收口（README / 计划 1 边界 / release 索引）
 
 **Files:**
-- Modify: `epcd-agent/README.md`
+- Modify: `backend/README.md`
 - Modify: `c:/Users/cube/Desktop/EPCD/agent-demo-command-flow_release.md`（仅当任务 7 未覆盖的收尾）
 
 **Interfaces:**

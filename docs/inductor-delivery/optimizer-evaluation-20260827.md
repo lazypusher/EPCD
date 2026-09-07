@@ -119,9 +119,9 @@ P0 兜底空间为整面板（22 维）属已知取舍，量产建议显式传�
 
 ```bash
 # 正向闭环
-cat epcd-agent/opt_v1_fixture.json | python -m epcd_agent.cli ... optimization_start
+cat backend/opt_v1_fixture.json | python -m epcd_agent.cli ... optimization_start
 # 输入断链（真实 describe 形状）
-cat epcd-agent/opt_real_empty_test.json | python -m epcd_agent.cli ... optimization_start
+cat backend/opt_real_empty_test.json | python -m epcd_agent.cli ... optimization_start
 ```
 
 ## 6. 关联产物

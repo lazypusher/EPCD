@@ -32,7 +32,7 @@ EPCD 服务器经 `~/.ssh/config`（标准源）+ `dsh-ssh` 导入派生。当�
 | 许可证 | `NINECUBE_LICENSE_FILE=2048@192.168.20.109`（远端 `~/.epcd-env`，`epcd_agent.cli` 前缀自动 source） |
 | 认证 | 免密 `id_ed25519`（实测 `ssh epcd-primary` 直连成功） |
 
-主机/包根**项目可配置**：`epcd-agent/servers.json` 维护 `别名 → {ssh, pkg}`，用
+主机/包根**项目可配置**：`backend/servers.json` 维护 `别名 → {ssh, pkg}`，用
 `epcd_agent.cli --server <别名>` 一键注入（见下方调用范式）。一次性覆盖用 `--ssh`/`--pkg`
 （`--ssh` 同样接受 `~/.ssh/config` 别名）或环境变量 `EPCD_SSH_HOST`/`EPCD_PKG_ROOT`
 （**两者必须成对**）。
@@ -41,7 +41,7 @@ EPCD 服务器经 `~/.ssh/config`（标准源）+ `dsh-ssh` 导入派生。当�
 
 ## epcd_agent.cli 调用范式（本机 pwsh）
 
-工作目录 `epcd-agent/`，所有参数经 **stdin 一个 UTF-8 JSON 对象**，stdout 恰好一行
+工作目录 `backend/`，所有参数经 **stdin 一个 UTF-8 JSON 对象**，stdout 恰好一行
 JSON，退出码 0 成功 / 1 业务失败（结构化错误仍在 stdout）/ 2 用法错误：
 
 ```powershell
@@ -51,7 +51,7 @@ $in | .\.venv\Scripts\python.exe -m epcd_agent.cli `
   --db <本地db路径> --session <会话名> epcd_project
 ```
 
-> `--server epcd-primary` 从 `epcd-agent/servers.json` 读 `{ssh, pkg}`（主机/包根单一来源，
+> `--server epcd-primary` 从 `backend/servers.json` 读 `{ssh, pkg}`（主机/包根单一来源，
 > 已实测通）。等价显式写法：`--ssh epcd-primary --pkg /package/...`（`--ssh` 接受
 > `~/.ssh/config` 别名）。服务器名/配置文件也可经环境变量 `EPCD_SERVER` /
 > `EPCD_SERVERS_FILE` 注入；`--server` 未命中/文件缺失 → 退出码 2（USAGE）。

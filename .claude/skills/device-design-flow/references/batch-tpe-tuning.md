@@ -6,7 +6,7 @@
 ## 调用
 
 ```bash
-# 工作目录 epcd-agent/；Git Bash 必须 MSYS_NO_PATHCONV=1
+# 工作目录 backend/；Git Bash 必须 MSYS_NO_PATHCONV=1
 MSYS_NO_PATHCONV=1 ./.venv/Scripts/python \
   skills/device-design-flow/scripts/collect_sim_data.py \
   --config skills/device-design-flow/scripts/collect_mf.toml \

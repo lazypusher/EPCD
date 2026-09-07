@@ -7,7 +7,7 @@ on every session. Writes two artifacts:
   <out_dir>/cache.json        raw describe payloads, keyed by templateId
   <out_dir>/comparison.md     human-readable candidate comparison table
 
-Usage (from epcd-agent/):
+Usage (from backend/):
   EPCD_SSH_HOST=... EPCD_PKG_ROOT=/package/... \
     ./.venv/Scripts/python scripts/template_cache.py \
       [--session inductor] [--db epcd-agent-session.sqlite3] \
@@ -105,7 +105,7 @@ def main() -> int:
     ap.add_argument("--extra", default="")
     args = ap.parse_args()
 
-    repo = str(pathlib.Path(__file__).resolve().parents[1])  # epcd-agent/
+    repo = str(pathlib.Path(__file__).resolve().parents[1])  # backend/
     env = {"repo": repo,
            "ssh": os.environ["EPCD_SSH_HOST"],
            "pkg": os.environ["EPCD_PKG_ROOT"]}
@@ -140,7 +140,7 @@ def main() -> int:
     tmp.replace(cache_path)
 
     md = (f"# EPCD inductor 模板对比\n\n"
-          f"> 本地快照，由 `epcd-agent/scripts/template_cache.py` 生成；"
+          f"> 本地快照，由 `backend/scripts/template_cache.py` 生成；"
           f"原始 describe 载荷见 [cache.json](cache.json)。\n\n"
           f"> **图例**：opt 参数形如 `线宽 6–20` 表示最小值–最大值（单位 µm，"
           f"numOfTurns 圈数无单位）；`@0.25` 表示该参数优化步进；"

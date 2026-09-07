@@ -1,6 +1,6 @@
 # EPCD inductor 模板对比
 
-> 本地快照，由 `epcd-agent/scripts/template_cache.py` 生成；原始 describe 载荷见 [cache.json](cache.json)。
+> 本地快照，由 `backend/scripts/template_cache.py` 生成；原始 describe 载荷见 [cache.json](cache.json)。
 
 > **图例**：opt 参数形如 `线宽 6–20` 表示最小值–最大值（单位 µm，numOfTurns 圈数无单位）；`@0.25` 表示该参数优化步进；synth 目标形如 `L=2.1 (Equal)` 表示默认值 2.1 用相等比较，`Q≥8 (Greater)` 表示下限，`maxSize≤300 (Less)` 表示上限。
 

@@ -3,9 +3,9 @@
 - **日期**：2026-08-20
 - **服务器**：`zhubo@192.168.20.243`，包 `/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default`（epcd-cli 0.1.0，Python 3.8.7）
 - **通道**：单一 CLI 入口 `python -m epcd_agent.cli --ssh <host> --pkg <pkg> --db acceptance.sqlite3 --session acceptance <tool>`（stdin JSON / stdout 单行 JSON / 退出码 0/1/2）
-- **会话**：本地 Store `epcd-agent/acceptance.sqlite3`，会话名 `acceptance`
+- **会话**：本地 Store `backend/acceptance.sqlite3`，会话名 `acceptance`
 - **工程**：远端 `/home/zhubo/epcd-runs/plan2-acceptance`，实例 `L1`（instanceId `20260820070615000`，模板 `system.inductor.simple_inductor`）
-- **编排依据**：`.claude/skills/device-design-flow/SKILL.md`（epcd-agent/skills 同步副本）
+- **编排依据**：`.claude/skills/device-design-flow/SKILL.md`（backend/skills 同步副本）
 
 ## 环境级阻断声明
 
@@ -171,7 +171,7 @@ Store 为单一事实源）。
 
 **§5 Skills 层**：唯一 skill `device-design-flow` 存在且本次全程按其阶段
 执行；M1–M4 确认点、预算约定、异常分支指引均落地；本次新增 Git Bash MSYS
-路径转换注意事项，已同步 `.claude/skills` 与 `epcd-agent/skills` 两份副本。
+路径转换注意事项，已同步 `.claude/skills` 与 `backend/skills` 两份副本。
 
 **§7 OptimizationController**：启动输入三要素（describe 原样 schema / 2 组初始
 候选 / max_rounds=3 预算）经 M2 确认后移交 ✅；循环体 run→poll→result→cost

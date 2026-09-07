@@ -131,7 +131,7 @@ score-verify-1（`b85335e5…`）/ score-verify-2（`9c9f065e…`，重写 synth
 
 **已解决 — 许可证**：`NINECUBE_LICENSE_FILE=2048@192.168.20.109` 下 emsolver 正常
 （此前 `Flexnet/Bitanswer license file does not exist`、exit 255 全链路失败）。
-环境变量已持久化到远端 `~/.epcd-env`，agent CLI 前缀自动 source（[cli.py](../epcd-agent/src/epcd_agent/cli.py) `build_argv_prefix`）。
+环境变量已持久化到远端 `~/.epcd-env`，agent CLI 前缀自动 source（[cli.py](../backend/src/epcd_agent/cli.py) `build_argv_prefix`）。
 
 ## 6. 指标（工程估算，非平台评分）
 
@@ -150,5 +150,5 @@ score-verify-1（`b85335e5…`）/ score-verify-2（`9c9f065e…`，重写 synth
 3. 修复后：重跑 `optimization_start`（3 轮真实评分）→ M3 apply-result（真实 best）→
    M4 `epcd_run final` → 补全 SNP/目标值/图表交付。
 
-验证命令速查（`epcd-agent/` 下）：`./.venv/Scripts/python -m epcd_agent.cli --db epcd-agent-session.sqlite3 --session inductor <tool>`，
+验证命令速查（`backend/` 下）：`./.venv/Scripts/python -m epcd_agent.cli --db epcd-agent-session.sqlite3 --session inductor <tool>`，
 stdin JSON 传参；远端 env 走 `~/.epcd-env`（自动 source）。

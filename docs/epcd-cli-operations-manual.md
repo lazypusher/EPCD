@@ -90,7 +90,7 @@ epcd-cli device-template list --category inductor
 epcd-cli device-template describe system.inductor.simple_inductor --project $PROJ
 ```
 describe 载荷三组：`basic`（层/形状/过孔）、`opt`（可优化参数 min/max/step/enabled）、`synth`（合成目标 suffix: Equal/Greater/Less），外加 `builtInMetrics`（key/default/weight/formula）。
-> 本地缓存：`docs/template-library/inductor/cache.json`（9 模板原始载荷）+ comparison.md，刷新脚本 `epcd-agent/scripts/template_cache.py`。
+> 本地缓存：`docs/template-library/inductor/cache.json`（9 模板原始载荷）+ comparison.md，刷新脚本 `backend/scripts/template_cache.py`。
 > agent 映射：`epcd_template`（action list/describe）。
 
 ### 2.4 器件 project device add / list / describe / remove
