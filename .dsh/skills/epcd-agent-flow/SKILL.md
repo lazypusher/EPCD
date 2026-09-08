@@ -1,6 +1,6 @@
 ---
 name: epcd-agent-flow
-description: EPCD 元器件设计 Agent 端到端全流程编排（含 M1~M4 里程碑确认）。用户用自然语言发起器件设计（如"帮我设计一个 2.4GHz 下 L≈10nH、Q>20 的电感"）时使用。核心流程走 epcd_agent 确定性后端（pwsh 调用），运维/传输/多服务器走 dsh-ssh 工具。
+description: EPCD 元器件设计 Agent 端到端全流程编排（含 M1~M4 里程碑确认）。用户用自然语言发起器件设计（如"帮我设计一个 2.4GHz 下 L≈10nH、Q>20 的电感"）时使用。chat 式交互：器件名/工作路径自动生成，服务器与工艺文件读全局配置（~/.dsh/epcd-config.json），里程碑用 ask_user_question 确认卡。核心流程走 epcd_agent 确定性后端（pwsh 调用），运维/传输走 dsh-ssh 工具。
 ---
 
 # EPCD Agent Flow
@@ -9,35 +9,30 @@ description: EPCD 元器件设计 Agent 端到端全流程编排（含 M1~M4 里
 实例化 → 配置目标 → 迭代优化 → 写回最优 → 最终仿真 → 产物交付。本 skill 是
 **流程编排配方**，不含器件领域知识（模板边界见 `references/`）。
 
-## 架构定位：两大工具通道
+## 全局配置（用户唯一需要手动维护的输入）
 
-| 通道 | 工具 | 用在哪 |
-| --- | --- | --- |
-| **确定性后端**（首选） | `epcd_agent.cli`（经本机 `pwsh` 调用；内含 epcd-cli SSH 子进程、信封解析、退出码分类、SQLite 记账、Optuna TPE 优化控制器） | 全部 P0 流程工具（health/template/project/device/config/formula/run/job）、优化闭环（optimization_start/status/cancel）、artifact_view |
-| **SSH 基础设施** | `dsh-ssh` 工具（`ssh_list`/`ssh_exec`/`ssh_upload`/`ssh_download`/`ssh_tunnel`/`ssh_cluster`） | 多服务器发现与选择、远程运维调试（许可证/日志/清目录）、工艺文件上传、产物批量拉取、集群冒烟 |
+**所有服务器/工艺/路径都读全局配置，绝不硬编码、也绝不在每次设计时问用户。**
+配置存于 `~/.dsh/epcd-config.json`（UTF-8 JSON）：
 
-**规则**：凡是"EPCD 领域语义"（信封解析、digest 记账、优化闭环）一律走
-`epcd_agent.cli`，它有 120+ 单测保障、读取结构化字段、绝不手搓 `epcd-cli` 原文。
-`dsh-ssh` 只做"连接、上/下载、运维 shell"，不承担 EPCD 契约解析。
-
-## 服务器预置
-
-EPCD 服务器经 `~/.ssh/config`（标准源）+ `dsh-ssh` 导入派生。当前环境：
-
-| 项 | 值 |
+| 字段 | 含义 |
 | --- | --- |
-| 主机别名 | `epcd-primary`（`~/.ssh/config` 与 `dsh-ssh` 均已配置：HostName 192.168.20.243 / User zhubo / IdentityFile ~/.ssh/id_ed25519） |
-| EPCD 包根 | `/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default` |
-| 工艺基线 | `demo_revised.ptxt`（终审版；原始 `demo.ptxt` 因衬底/金属损耗过高 L/Q 恒负，已弃用） |
-| 许可证 | `NINECUBE_LICENSE_FILE=2048@192.168.20.109`（远端 `~/.epcd-env`，`epcd_agent.cli` 前缀自动 source） |
-| 认证 | 免密 `id_ed25519`（实测 `ssh epcd-primary` 直连成功） |
+| `ssh` | SSH 服务器别名（`~/.ssh/config` 的 Host，含 HostName/User/IdentityFile；也支持直接 host） |
+| `pkg` | EPCD 包根（远端绝对路径） |
+| `technology` | 工艺文件（远端绝对路径，如 `demo_revised.ptxt`） |
+| `workDirRoot` | 器件工作目录根（远端，`/…/epcd-runs`） |
 
-主机/包根**项目可配置**：`backend/servers.json` 维护 `别名 → {ssh, pkg}`，用
-`epcd_agent.cli --server <别名>` 一键注入（见下方调用范式）。一次性覆盖用 `--ssh`/`--pkg`
-（`--ssh` 同样接受 `~/.ssh/config` 别名）或环境变量 `EPCD_SSH_HOST`/`EPCD_PKG_ROOT`
-（**两者必须成对**）。
-多服务器：在 `servers.json` 加条目 + `dsh-ssh` 加主机；用 `ssh_list` 按
-`environment`/`tags` 过滤选择目标。
+流程入口读该文件：
+- **缺失/字段不全** → 用 `ask_user_question` 只问缺失的 `ssh`/`pkg`/`technology`/`workDirRoot`，写回该文件后再继续（一次性）。
+- **用户说「改全局配置 / 换服务器 / 换工艺 / 连另一台服务器」** → 更新该文件对应字段，再从第 1 阶段跑。
+- `servers.json` 仍是服务器池（`别名 → {ssh, pkg}`），但全局配置的 `ssh`/`pkg` 为默认目标，二者保持一致即可。
+
+## 自动命名（器件名/路径/实例名，用户不必手动填）
+
+- **器件名**：从用户自然语言提取关键参数自动生成，如「2.4GHz 下 L≈10nH 电感」→ `ind-2p4g-10nh`；无法提取时按 `ind-001`、`ind-002`…全局递增（依据 `workDirRoot` 下已有目录）。
+- **work_dir** = `<workDirRoot>/<器件名>`（`epcd_project init` 的 `work_dir`）。
+- **实例名** = `<器件名>-inst`（`epcd_device add` 的 `name`）。
+- **session / db**：`--session <器件名>`；`--db` 固定为项目工作区 `backend/epcd-agent-session.sqlite3`（单一事实源，审计+恢复）。
+- 以上自动生成的命名在 **M1 确认卡里一并展示**，用户可在「修改」选项里改器件名/实例名，改后派生路径随之更新。
 
 ## epcd_agent.cli 调用范式（本机 pwsh）
 
@@ -45,33 +40,30 @@ EPCD 服务器经 `~/.ssh/config`（标准源）+ `dsh-ssh` 导入派生。当�
 JSON，退出码 0 成功 / 1 业务失败（结构化错误仍在 stdout）/ 2 用法错误：
 
 ```powershell
-$in = '{"action":"init","work_dir":"/home/zhubo/epcd-runs/<器件名>","technology":"/home/zhubo/demo_revised.ptxt"}'
+$in = '{"action":"init","work_dir":"<自动生成的work_dir>","technology":"<全局配置technology>"}'
 $in | .\.venv\Scripts\python.exe -m epcd_agent.cli `
-  --server epcd-primary `
-  --db <本地db路径> --session <会话名> epcd_project
+  --server <全局配置ssh> `
+  --db backend/epcd-agent-session.sqlite3 --session <器件名> epcd_project
 ```
 
-> `--server epcd-primary` 从 `backend/servers.json` 读 `{ssh, pkg}`（主机/包根单一来源，
-> 已实测通）。等价显式写法：`--ssh epcd-primary --pkg /package/...`（`--ssh` 接受
-> `~/.ssh/config` 别名）。服务器名/配置文件也可经环境变量 `EPCD_SERVER` /
-> `EPCD_SERVERS_FILE` 注入；`--server` 未命中/文件缺失 → 退出码 2（USAGE）。
+> `--server <ssh>` 从 `backend/servers.json` 读 `{ssh, pkg}`；等价显式写法
+> `--ssh <alias> --pkg <pkg>`（`--ssh` 接受 `~/.ssh/config` 别名）。`--server`
+> 未命中 / `servers.json` 缺该别名 / 文件缺失 → 退出码 2（USAGE）。
 
 12 个工具：`epcd_health` / `epcd_template` / `epcd_project` / `epcd_device` /
 `epcd_config` / `epcd_formula` / `epcd_run` / `epcd_job` / `optimization_start` /
 `optimization_status` / `optimization_cancel` / `artifact_view`。
 
-`--db` 用项目工作区内的持久化 SQLite（如 `epcd-agent-session.sqlite3`），会话名
-`--session` 按设计任务隔离（单一事实源，审计 + 恢复）。
-
 ## 阶段流程
 
 1. **健康检查（自主）**：`epcd_health`。`data.status=="degraded"` 时解释原因并停。
-2. **建工程（自主）**：`epcd_project` init（`work_dir` 远端路径 + `technology` 工艺文件）；
-   随后 describe + validate。
+2. **建工程（自主）**：`epcd_project` init（`work_dir` = 自动生成路径 + `technology`
+   = 全局配置工艺）；随后 describe + validate。
 3. **选型（自主 + M1 确认）**：优先用本地对比表 `references/inductor-templates-comparison.md`
    （9 个电感/tcoil 模板的 opt 边界、synth 默认目标、指标族），仅未覆盖信息才回退
-   `epcd_template` list/describe。向用户展示候选，**用 `ask_user_question` 做 M1**
-   （选定模板 + 实例名；批准/换一个/终止）。批准后 `epcd_device` add。
+   `epcd_template` list/describe。向用户展示候选 + **自动生成的器件名/实例名/工作路径**，
+   **用 `ask_user_question` 做 M1**（批准 / 修改（可改器件名·实例名·模板）/ 终止）。
+   批准后 `epcd_device` add。
 4. **目标与仿真配置（M2 确认）**：`epcd_config` schema/get 取骨架与 digest；
    按模板 synth 组 suffix+default 构造 synthesisTargets。**评分目标由 objectives 直接
    生效**（metric 用模板族名：`Inductance Value(nH)`→L、`Min Q Factor`→Q、`Max Size(um)`→size，
