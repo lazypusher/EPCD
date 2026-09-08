@@ -1,5 +1,5 @@
 /**
- * EPCD 专用 branding：覆盖 title / favicon / manifest，去掉 DeepSeek 标识。
+ * EPCD 专用 branding：覆盖 title / favicon / manifest + UI 内 DeepSeek logo。
  * 仅在本 profile（epcd）生效，不影响默认 web profile。
  */
 import { readFileSync } from 'node:fs';
@@ -21,6 +21,18 @@ const manifest = JSON.stringify({
   icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }]
 });
 
+// UI 内的 DeepSeek logo（sidebar 顶部文字字标 + 折叠态/欢迎页鲸鱼）→ EPCD。
+// class hash 来自 dsh-web-frontend 编译产物（dsh 版本锁定后稳定）。
+const BRAND_CSS = [
+  /* sidebar 顶部：DeepSeek 文字字标 → EPCD 文字 */
+  '.hHd-Xa_brand svg{display:none!important}',
+  '.hHd-Xa_brand::after{content:"EPCD 器件设计";font-size:15px;font-weight:600;color:var(--dsw-alias-label-primary);white-space:nowrap}',
+  /* 折叠态侧栏的鲸鱼图标 */
+  '.hHd-Xa_railFish{display:none!important}',
+  /* 空对话欢迎页的鲸鱼图标 */
+  '.pXSMma_fish{display:none!important}'
+].join('\n');
+
 function respond(body, contentType) {
   return (_req, res) => {
     res.writeHead(200, { 'content-type': contentType });
@@ -29,8 +41,10 @@ function respond(body, contentType) {
 }
 
 export function apply(ctx) {
-  // 浏览器标签标题
-  ctx.webServer.tapIndex((html) => html.replace(/<title>[^<]*<\/title>/, '<title>EPCD 器件设计平台</title>'));
+  // 浏览器标签标题 + 注入 EPCD logo 覆盖 CSS
+  ctx.webServer.tapIndex((html) => html
+    .replace(/<title>[^<]*<\/title>/, '<title>EPCD 器件设计平台</title>')
+    .replace('</head>', `<style>${BRAND_CSS}</style></head>`));
   // favicon（精确路由优先于 dist 的 fallback）
   ctx.webServer.register({ kind: 'exact', path: '/favicon.svg', handler: respond(favicon, 'image/svg+xml') });
   // PWA manifest
