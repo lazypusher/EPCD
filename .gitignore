@@ -1,5 +1,8 @@
 # 运行产物
 *.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+platform/server/data/
 
 # git 历史备份
 .git_backups/
