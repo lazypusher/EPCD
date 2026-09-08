@@ -1,0 +1,16 @@
+{
+  "name": "dsh-profile-epcd",
+  "private": true,
+  "dependencies": {
+    "@linxin666/dsh-ssh": "^0.3.16"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "@linxin666/dsh-ssh"
+      ]
+    }
+  }
+}

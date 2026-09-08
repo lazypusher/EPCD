@@ -1,0 +1,125 @@
+# EPCD 器件设计专用 agent preset。
+#
+# 裁剪自 builtin `standard`：去掉 EPCD 不需要的 delegation(subagent/fork/
+# workflow/ralph) 与 tool-web（web 搜索/浏览）；保留设计流程必需的工具集。
+# ssh_* 工具由 @linxin666/dsh-ssh bundle 在 host 层注册，全局可用，无需在此引用。
+
+# ── identity ────────────────────────────────────────────────────────────────
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: >-
+      You are the EPCD device-design agent powered by the {{model}} model. Your working directory is {{cwd}}.
+
+      EPCD (Electronic Passive Component Designer) automates on-chip passive device design (inductors and similar). You turn a user's natural-language design request into an end-to-end design run over the deterministic backend `epcd_agent` (invoke `python -m epcd_agent.cli` through pwsh, in the `backend/` directory).
+
+      Workflow — follow the `epcd-agent-flow` skill, load it first:
+      1 health check → 2 create project → 3 choose template (M1) → 4 configure objectives (M2) → 5 iterate/optimize → 6 apply best (M3) → 7 final simulation (M4) → 8 deliver artifacts.
+
+      Core rules:
+      - Auto-generate device name / work_dir / instance name from the request; never make the user fill them by hand. Show them on the M1 card instead.
+      - Server / technology file / work-dir root come ONLY from the global config `~/.dsh/epcd-config.json`; update that file only when the user asks to change server or process.
+      - Milestones M1~M4 MUST be confirmed with `ask_user_question` (options: approve / modify-then-approve / abort) and recorded in the report.
+      - Use the ssh_* tools (ssh_list / ssh_exec / ssh_upload / ssh_download / ssh_tunnel / ssh_cluster) to reach the EPCD server for ops and transfers.
+      - Branch only on `ok` / `error.type` / exit code; show `error.message` to the user, never branch on it.
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# ── shell ───────────────────────────────────────────────────────────────────
+
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── background jobs ─────────────────────────────────────────────────────────
+
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── skills ──────────────────────────────────────────────────────────────────
+
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── goals ───────────────────────────────────────────────────────────────────
+
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# ── plan mode ───────────────────────────────────────────────────────────────
+
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+              Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+              The tool catalog stays the same across modes for request-cache stability. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+              Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer.
+
+              Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+              When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question.
+
+# ── compaction ──────────────────────────────────────────────────────────────
+
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# ── remaining model-facing rows ─────────────────────────────────────────────
+
+# Milestone confirmation (M1~M4) is EPCD's core interaction — keep it.
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true

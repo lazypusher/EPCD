@@ -1,0 +1,18 @@
+# EPCD 器件设计专用 profile 的 patch 层（在 bundle 层之后应用）。
+# 裁剪 DSH 的通用功能：telemetry 上报与 web 搜索对器件设计无用，禁用。
+
+- id: session-telemetry-otel
+  disabled: true
+
+- id: web-search-deepseek
+  disabled: true
+
+# 默认挂载 EPCD 专用 agent preset（不回退到 standard）。
+- id: agent-presets
+  config:
+    default: epcd
+
+# EPCD 专用 branding：覆盖 title/favicon/manifest（本地插件，相对本 profile 目录）。
+- insert:
+    - id: epcd-brand
+      name: ./epcd-brand.mjs
