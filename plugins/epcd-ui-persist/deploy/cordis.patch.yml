@@ -1,0 +1,34 @@
+# EPCD 器件设计专用 profile 的 patch 层（在 bundle 层之后应用）。
+# 1) 裁剪通用功能  2) 锁定 epcd 唯一 preset  3) 存储隔离  4) 挂载 EPCD UI 插件  5) branding
+
+- id: session-telemetry-otel
+  disabled: true
+
+- id: web-search-deepseek
+  disabled: true
+
+# ── 专用模式：default 指向 epcd（用户根 ~/.dsh/.agent-presets 里的 epcd 会进名录并被默认选中）──
+# 注：composeProfile 会把 shipped 4 个 preset（standard/code/minimal/cordis）强制塞进 roots，
+# 该层无法用 patch 移除；所以「名录只剩 epcd」在框架层做不到，这里只保证 default=epcd（其余列出来但默认不选）。
+- id: agent-presets
+  config:
+    default: epcd
+
+# ── 存储隔离：会话 / 键值库（含 workspace 记录）落本 profile 私有目录，与其他 profile 互不可见 ──
+- id: session-persistence-jsonl
+  config:
+    root: !!js dshHomePath('profiles/epcd/data/sessions')
+
+- id: storage-json
+  config:
+    root: !!js dshHomePath('profiles/epcd/data/storages')
+
+# ── EPCD UI 插件：宿主工具 epcd_status/epcd_artifacts + 客户端进度条/三视图产物图库 ──
+- insert:
+    - id: epcd-ui-plugin
+      name: epcd-ui-plugin
+
+# ── EPCD 专用 branding：title/favicon/manifest + 隐藏 DeepSeek slogan（本地插件）──
+- insert:
+    - id: epcd-brand
+      name: ./epcd-brand.mjs

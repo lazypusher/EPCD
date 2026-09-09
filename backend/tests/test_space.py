@@ -124,6 +124,67 @@ def test_parse_real_schema_rejects_non_object_root():
         parse_real_parameter_schema({"properties": {}})
 
 
+# --- current build (epcd-cli 0.1.0 as of 2026-09): numeric bounds -----------
+# The old parser only understood the legacy string spelling; the current build
+# uses numeric minimum/maximum, ``multipleOf`` for the discrete step, and
+# ``x-epcd-enabled``/``x-epcd-locked`` booleans. Errors here caused the
+# optimizer to fall back to describe().addinParams (the panel dump).
+
+CURRENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "basic": {"type": "object", "properties": {
+            "layer": {"type": "string", "enum": ["metal1", "metal2"],
+                      "x-epcd-enabled": True},
+        }},
+        "opt": {"type": "object", "properties": {
+            "trackWidth": {"type": "number", "default": 10.0, "minimum": 6.0,
+                           "maximum": 20.0, "x-epcd-enabled": True,
+                           "x-epcd-locked": False},
+            "trackSpace": {"type": "number", "default": 2.0, "minimum": 1.5,
+                           "maximum": 5.0, "x-epcd-enabled": True,
+                           "x-epcd-locked": True},
+            "numOfTurns": {"type": "number", "default": 2.5, "minimum": 0.5,
+                           "maximum": 8.0, "multipleOf": 0.5,
+                           "x-epcd-enabled": True, "x-epcd-locked": False},
+            "innerRadius": {"type": "number", "default": 60.0, "minimum": 20.0,
+                            "maximum": 80.0, "x-epcd-enabled": True,
+                            "x-epcd-locked": False},
+        }},
+        "synth": {"type": "object", "properties": {
+            "inductance": {"type": "number", "default": 2.1, "x-epcd-suffix": "Equal",
+                           "x-epcd-enabled": True},
+            "minQFactor": {"type": "number", "default": 8.0, "x-epcd-suffix": "Greater",
+                           "x-epcd-enabled": True},
+            "maxSize": {"type": "number", "default": 300.0, "x-epcd-suffix": "Less",
+                        "x-epcd-enabled": True},
+        }},
+    },
+}
+
+
+def test_parse_real_schema_current_build_format():
+    space = parse_real_parameter_schema(CURRENT_SCHEMA)
+    by = {s.name: s for s in space.specs}
+    # x-epcd-locked trackSpace is design-fixed → excluded from the opt space
+    assert set(by) == {"trackWidth", "numOfTurns", "innerRadius"}
+    assert by["trackWidth"].kind == "float"
+    assert (by["trackWidth"].low, by["trackWidth"].high) == (6.0, 20.0)
+    # multipleOf drives the discrete step in the current build
+    assert by["numOfTurns"].step == 0.5
+    assert (by["innerRadius"].low, by["innerRadius"].high) == (20.0, 80.0)
+    assert space.unbounded == ()
+
+
+def test_parse_synth_targets_current_build_format():
+    targets = parse_synth_targets(CURRENT_SCHEMA)
+    assert targets == (
+        {"metric": "inductance", "comparison": "equal", "targetValue": 2.1, "unit": ""},
+        {"metric": "minQFactor", "comparison": "greater-than", "targetValue": 8.0, "unit": ""},
+        {"metric": "maxSize", "comparison": "less-than", "targetValue": 300.0, "unit": ""},
+    )
+
+
 # --- describe().addinParams (2026-08-27 builds): optimizer-eval P0 -----------
 # fieldType semantics: 0/3 numeric scalar, 1 enum, 2 switch, 6 layer multi-select.
 # visibleControlKey != "None" means the parameter only appears under a condition

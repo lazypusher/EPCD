@@ -1,0 +1,26 @@
+{
+  "name": "epcd-ui-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "EPCD 专用 UI 插件：epcd_status / epcd_artifacts 宿主工具 + 进度条/三视图产物图库客户端卡片。",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+  }
+}

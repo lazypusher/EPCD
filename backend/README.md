@@ -126,8 +126,12 @@ python -m epcd_agent.cli --ssh zhubo@192.168.20.243 \
    `parse_envelope` 自首个 `{` 恢复解析。
 3. `device-template describe` 的 `builtInMetrics` 为对象数组
    （key/tagName/default/weight/formula），`parameterSchema` 为
-   basic/opt/synth 分组嵌套结构，数值边界以字符串给出 → `optimizer/space.py`
-   的 `parse_real_parameter_schema` 已适配（扁平与嵌套两种候选形态均可提交）。
+   basic/opt/synth 分组嵌套结构；边界先后出现过两种格式——旧 build 把数值边界
+   以字符串给出（`minimum`/`maximum`/`step`/`enabled`/`suffix`），当前 build 用
+   数值 `minimum`/`maximum` + `multipleOf`（离散步进）+ `x-epcd-enabled`/
+   `x-epcd-locked`/`x-epcd-suffix` 布尔/枚举。`optimizer/space.py` 的
+   `parse_real_parameter_schema`/`parse_synth_targets` 两种都适配，且
+   `x-epcd-locked` 参数不进优化空间（如 adv_simple_inductor 锁定 trackSpace）。
 4. `project device add` 响应无 `created`/`name`/`folderName`/`templateId`，
    `instanceId` 为时间戳形式字符串，附带 `config`（epcd-device/v1 骨架）。
 5. `config schema` 的 `schema` 是 epcd-device/v1 配置默认值骨架，不是

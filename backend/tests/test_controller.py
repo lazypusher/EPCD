@@ -284,14 +284,62 @@ def test_no_objective_data_at_all_pauses(tmp_path):
         c.run()
 
 
-def test_tpe_sampler_uses_reduced_startup(monkeypatch, tmp_path):
-    """TPE must sample from REAL observations early.
+def test_resume_observations_seed_study_before_first_round(monkeypatch, tmp_path):
+    """resume_observations 必须作为已观测 trial 注入 Optuna study（warm start）。
 
-    Regression: with optuna's default n_startup_trials=10 the sampler spends the
-    first 10 rounds on seeded pseudo-random exploration that ignores observed
-    costs (the A/B process-file run showed both arms drawing the SAME third
-    candidate despite ~200x differing costs). We pin n_startup_trials=3 so the
-    controller starts learning after the enqueued initials + one observed round.
+    回归：追加轮次时若不复用上一 task 的成功样本，TPE 从空后验重来，等于白烧种子。
+    这里窥探 optuna.trial.create_trial 的调用次数，确认每个观测都真正落进 study。
+    """
+    import optuna.trial
+
+    created = {"n": 0}
+    real = optuna.trial.create_trial
+
+    def spy(*a, **kw):
+        created["n"] += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(optuna.trial, "create_trial", spy)
+
+    ctx, calls, _ = make_ctx(tmp_path, [
+        {"argvPrefix": ["run"], "responses": [submit("j-1")]},
+        {"argvPrefix": ["job", "get"], "responses": [job_get("succeeded")]},
+        {"argvPrefix": ["job", "result"], "responses": [job_result(0.3, "j-1")]},
+    ])
+    c = controller(ctx, budget=OptimizationBudget(max_rounds=1),
+                   resume_observations=[
+                       {"parameters": {"width": 10.0, "numOfTurns": 3}, "cost": 0.9},
+                       {"parameters": {"width": 12.0, "numOfTurns": 4}, "cost": 0.7},
+                   ])
+    report = c.run()
+    assert created["n"] == 2          # 两条历史都通过 create_trial 注入
+    assert report.best_job_id == "j-1"
+
+
+def test_resume_observations_skip_malformed_entries(monkeypatch, tmp_path):
+    """坏历史（缺 cost / 越界参数）不得中断优化，只跳过。"""
+    ctx, _, _ = make_ctx(tmp_path, [
+        {"argvPrefix": ["run"], "responses": [submit("j-1")]},
+        {"argvPrefix": ["job", "get"], "responses": [job_get("succeeded")]},
+        {"argvPrefix": ["job", "result"], "responses": [job_result(0.3, "j-1")]},
+    ])
+    c = controller(ctx, budget=OptimizationBudget(max_rounds=1),
+                   resume_observations=[
+                       {"parameters": {"width": 10.0, "numOfTurns": 3}, "cost": None},
+                       {"parameters": {"width": "abc", "numOfTurns": 3}, "cost": 0.5},
+                       "not-a-dict",
+                       {"parameters": {"width": 11.0, "numOfTurns": 4}, "cost": 0.4},
+                   ])
+    report = c.run()  # 不能抛异常
+    assert report.best_job_id == "j-1"
+
+
+def test_tpe_sampler_uses_configured_startup(monkeypatch, tmp_path):
+    """TPE's n_startup_trials must equal the controller's startup_trials.
+
+    Default is 5 (not Optuna's 10): the sampler should start learning from
+    observed costs after a short random warm-up, not burn 10 rounds on seeded
+    pseudo-random exploration. The value is overridable per-template/arg.
     """
     import optuna.samplers
 
@@ -311,4 +359,24 @@ def test_tpe_sampler_uses_reduced_startup(monkeypatch, tmp_path):
     assert report.rounds == ()
     assert captured.get("seed") == _TPE_SEED
     assert captured.get("n_startup_trials") == _TPE_STARTUP_TRIALS
-    assert _TPE_STARTUP_TRIALS < 10  # must stay well below optuna's default
+    assert _TPE_STARTUP_TRIALS < 10  # must stay below optuna's default
+
+
+def test_startup_trials_override(monkeypatch, tmp_path):
+    """startup_trials passed to the controller must reach TPESampler."""
+    import optuna.samplers
+
+    captured = {}
+    real = optuna.samplers.TPESampler
+
+    class Spy(real):
+        def __init__(self, *a, **kw):
+            captured.update(kw)
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(optuna.samplers, "TPESampler", Spy)
+    ctx, _, _ = make_ctx(tmp_path, [])
+    c = controller(ctx, budget=OptimizationBudget(max_rounds=1), startup_trials=10)
+    c.request_cancel()
+    c.run()
+    assert captured.get("n_startup_trials") == 10

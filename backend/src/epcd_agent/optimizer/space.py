@@ -108,12 +108,29 @@ def to_optuna_distributions(specs: Iterable[ParamSpec]) -> dict:
 
 
 # --- real server builds: nested basic/opt/synth parameterSchema ------------
-# Observed on epcd-cli 0.1.0 (release doc section 4.3 corrected): the schema
-# is grouped into basic/opt/synth objects and every bound/default/step is a
-# string ("None" = unbounded, "@0.25" = discrete step, comma-separated
-# default = enumeration candidates).
+# Two formats have been observed in the wild and BOTH must parse:
+#
+#   legacy (epcd-cli built ~2026-08-27): every bound/default/step is a string —
+#     "None" = unbounded, "@0.25" = discrete step, comma-separated ``default``
+#     = enumeration candidates, ``enabled`` = "1"/"0", ``suffix`` = "Equal".
+#
+#   current (epcd-cli 0.1.0 as of 2026-09): bounds are numeric
+#     ``minimum``/``maximum``, discrete steps are JSON-Schema ``multipleOf``,
+#     enable/lock are ``x-epcd-enabled`` / ``x-epcd-locked`` booleans,
+#     categoricals use ``enum``, and objectives carry ``x-epcd-suffix``.
+#
+# The earlier parser only understood the legacy spelling, so against the
+# current build it produced an EMPTY space and the caller fell back to
+# describe() ``addinParams``. ``addinParams`` is the *panel* dump (shielding,
+# metal fill, guard ring, pin geometry — offset/width/spacing/shape/...), NOT
+# the template's optimization parameters. The optimizer therefore walked every
+# low-level panel field while the server silently ran the default geometry.
+# Only the template's ``parameterSchema`` opt group is authoritative.
 
 _SUFFIX_TO_COMPARISON = {"Equal": "equal", "Greater": "greater-than", "Less": "less-than"}
+
+_FALSY_STRINGS = frozenset(("", "0", "false", "none", "null"))
+_TRUTHY_STRINGS = frozenset(("1", "true", "yes"))
 
 
 def _to_bound(value) -> float | None:
@@ -128,35 +145,70 @@ def _real_group(schema: dict, group: str) -> dict:
     return node.get("properties") or {}
 
 
+def _is_enabled(prop: dict) -> bool:
+    """True unless explicitly disabled (current ``x-epcd-enabled`` boolean or
+    legacy ``enabled`` "1"/"0"); absent means enabled."""
+    for key in ("x-epcd-enabled", "enabled"):
+        value = prop.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() not in _FALSY_STRINGS
+    return True
+
+
+def _is_locked(prop: dict) -> bool:
+    """True when ``x-epcd-locked`` (design-fixed → excluded from the opt space)."""
+    value = prop.get("x-epcd-locked")
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in _TRUTHY_STRINGS
+
+
+def _step_or_multiple_of(prop: dict) -> float | None:
+    """Discrete step from ``step`` (legacy "@0.5"/"0.5") or ``multipleOf``."""
+    step_raw = str(prop.get("step") or "None").strip()
+    if step_raw not in ("", "None"):
+        return float(step_raw.lstrip("@"))
+    multiple = _to_bound(prop.get("multipleOf"))
+    return multiple if multiple is not None and multiple > 0 else None
+
+
 def parse_real_parameter_schema(schema: dict) -> ParsedSpace:
     """Parse the nested basic/opt/synth parameterSchema of real builds.
 
     Only the opt group feeds the optimization space; basic parameters are
     fixed at instantiation and synth parameters are design objectives (see
-    parse_synth_targets).
+    parse_synth_targets). ``x-epcd-locked`` parameters are design-fixed and
+    therefore excluded (e.g. adv_simple_inductor locks trackSpace).
     """
     if not isinstance(schema, dict) or schema.get("type") != "object":
         raise ValueError("parameter schema root must be an object schema")
     specs: list[ParamSpec] = []
     unbounded: list[str] = []
     for name, prop in _real_group(schema, "opt").items():
-        if not isinstance(prop, dict) or str(prop.get("enabled", "1")) != "1":
+        if not isinstance(prop, dict) or not _is_enabled(prop) or _is_locked(prop):
+            continue
+        enum = prop.get("enum")
+        if isinstance(enum, (list, tuple)) and len(enum) >= 2:
+            specs.append(ParamSpec(name, "categorical",
+                                   choices=tuple(str(x) for x in enum)))
             continue
         low, high = _to_bound(prop.get("minimum")), _to_bound(prop.get("maximum"))
-        if low is None and high is None:
-            default = str(prop.get("default") or "")
-            choices = tuple(part for part in (p.strip() for p in default.split(",")) if part)
-            if len(choices) >= 2:
-                specs.append(ParamSpec(name, "categorical", choices=choices))
+        if low is None or high is None:
+            if low is None and high is None:
+                default = str(prop.get("default") or "")
+                choices = tuple(p.strip() for p in default.split(",") if p.strip())
+                if len(choices) >= 2:
+                    specs.append(ParamSpec(name, "categorical", choices=choices))
+                else:
+                    unbounded.append(name)
             else:
                 unbounded.append(name)
             continue
-        if low is None or high is None:
-            unbounded.append(name)
-            continue
-        step_raw = str(prop.get("step") or "None").strip()
-        step = float(step_raw.lstrip("@")) if step_raw not in ("", "None") else None
-        specs.append(ParamSpec(name, "float", low=low, high=high, step=step))
+        specs.append(ParamSpec(name, "float", low=low, high=high,
+                               step=_step_or_multiple_of(prop)))
     return ParsedSpace(specs=tuple(specs), unbounded=tuple(unbounded))
 
 
@@ -166,9 +218,10 @@ def parse_synth_targets(schema: dict) -> tuple[dict, ...]:
         raise ValueError("parameter schema root must be an object schema")
     targets: list[dict] = []
     for name, prop in _real_group(schema, "synth").items():
-        if not isinstance(prop, dict) or str(prop.get("enabled", "1")) != "1":
+        if not isinstance(prop, dict) or not _is_enabled(prop):
             continue
-        comparison = _SUFFIX_TO_COMPARISON.get(str(prop.get("suffix", "")))
+        comparison = _SUFFIX_TO_COMPARISON.get(
+            str(prop.get("x-epcd-suffix") or prop.get("suffix") or ""))
         target_value = _to_bound(prop.get("default"))
         if comparison is None or target_value is None:
             continue

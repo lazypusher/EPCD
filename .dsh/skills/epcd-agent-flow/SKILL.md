@@ -1,18 +1,39 @@
 ---
 name: epcd-agent-flow
-description: EPCD 元器件设计 Agent 端到端全流程编排（含 M1~M4 里程碑确认）。用户用自然语言发起器件设计（如"帮我设计一个 2.4GHz 下 L≈10nH、Q>20 的电感"）时使用。chat 式交互：器件名/工作路径自动生成，服务器与工艺文件读全局配置（~/.dsh/epcd-config.json），里程碑用 ask_user_question 确认卡。核心流程走 epcd_agent 确定性后端（pwsh 调用），运维/传输走 dsh-ssh 工具。
+description: EPCD 元器件设计 Agent 端到端全流程编排。用户自然语言发起器件设计（"帮我设计一个 2.4GHz 下 L≈10nH、Q>20 的电感"）时使用。只确认两件主观决策：synth 目标（仅当用户没给具体指标时，逐项）与模板（推荐）；命名/路径/仿真配置/TPE 参数全自动，并一路执行到全部仿真结果，再按结果确认写回/优化方案与最终仿真。服务器与工艺读项目配置（`<cwd>/epcd-config.json`，缺字段回落默认值）。核心流程走 epcd_agent 确定性后端（epcd_cli 直调），运维/传输走 dsh-ssh 工具。
 ---
 
 # EPCD Agent Flow
 
-在 `epcd-cli` 之上编排一套完整的器件设计流程：健康检查 → 建工程 → 选模板 →
-实例化 → 配置目标 → 迭代优化 → 写回最优 → 最终仿真 → 产物交付。本 skill 是
-**流程编排配方**，不含器件领域知识（模板边界见 `references/`）。
+在 `epcd-cli` 之上编排一套完整的器件设计流程：
+健康检查 → 目标/模板确认 → 自动执行（建工程 → 实例化 → 配目标 → TPE 优化 → 仿真）→ 结果确认 → 最终仿真 → 交付。
+用户只确认「目标」与「模板」两项主观决策，其余全部自动生成并自动跑完。
+本 skill 是**流程编排配方**，不含器件领域知识（模板边界见 `references/`）。
 
-## 全局配置（用户唯一需要手动维护的输入）
+## ⚡ 快速启动（先把第一步做对，再谈其它）
 
-**所有服务器/工艺/路径都读全局配置，绝不硬编码、也绝不在每次设计时问用户。**
-配置存于 `~/.dsh/epcd-config.json`（UTF-8 JSON）：
+用户一开口就直奔第一步，**在健康检查之前禁止任何仓库探索与提前提问**。这直接决定
+「输入 → 首步」的延迟，也是本 skill 的第一条纪律：
+
+1. **读项目配置**（一次工具 `epcd_config`，`action=get`）：从返回的 `effective` 取
+   `ssh`/`pkg`/`technology`/`workDirRoot`（= 项目配置 `<cwd>/epcd-config.json` 覆盖默认值）。
+   关键字段缺失时，用**一次** `ask_user_question` 把缺失字段问齐并 `epcd_config`（`action=set`）写回
+   （这是健康检查前唯一允许的提问）。
+2. **立刻跑健康检查**（一次 `epcd_cli` 的 `epcd_health`，见下），`data.status=="degraded"` 时解释原因并停。
+3. 健康检查通过后，才按需读 `references/inductor-templates-comparison.md` 或
+   `epcd_template list/describe`（它们服务于模板/目标确认，不是第一步）。
+
+**禁止在健康检查前做这些事**（都会白白拖慢首步、且已有实数教训）：
+
+- `glob` 仓库 / 读 `backend/README.md`、`cli.py`、`store.py` —— 这些不影响第一步；
+- 提前问设计规格/目标 —— 目标确认在健康检查之后、且只在用户没给具体指标时才问；
+- 先读模板对比表 / 先看 schema —— 那是模板/目标确认阶段的事。
+
+## 项目配置（默认值 + 项目覆盖）
+
+**默认值**是本 profile 的基线（`~/.dsh/profiles/epcd/data/epcd-config-defaults.json`）；
+**项目配置**是每项目一份的 `<cwd>/epcd-config.json`，只覆盖有改动的字段，缺字段回落到默认值。
+**有效值（effective）= 默认值 ← 项目配置逐字段覆盖**。一律用 effective，绝不硬编码。
 
 | 字段 | 含义 |
 | --- | --- |
@@ -21,80 +42,163 @@ description: EPCD 元器件设计 Agent 端到端全流程编排（含 M1~M4 里
 | `technology` | 工艺文件（远端绝对路径，如 `demo_revised.ptxt`） |
 | `workDirRoot` | 器件工作目录根（远端，`/…/epcd-runs`） |
 
-流程入口读该文件：
-- **缺失/字段不全** → 用 `ask_user_question` 只问缺失的 `ssh`/`pkg`/`technology`/`workDirRoot`，写回该文件后再继续（一次性）。
-- **用户说「改全局配置 / 换服务器 / 换工艺 / 连另一台服务器」** → 更新该文件对应字段，再从第 1 阶段跑。
-- `servers.json` 仍是服务器池（`别名 → {ssh, pkg}`），但全局配置的 `ssh`/`pkg` 为默认目标，二者保持一致即可。
+- **读取**：`epcd_config`（`action=get`）拿 `effective`；若该工具缺失，才 `read` 上述两个文件合并。
+- **用户可在左侧侧边栏「EPCD 配置」入口（SSH 下方）直接改**（编辑 + 历史路径一键切换；留空=用默认值），改完从快速启动重跑。
+- **用户说「换服务器 / 换工艺 / 连另一台服务器」** → 用 `epcd_config`（`action=set`）写对应字段，或提示去「EPCD 配置」tab 改。
+- `servers.json` 仍是服务器池（`别名 → {ssh, pkg}`），项目配置的 `ssh`/`pkg` 为默认目标，二者一致即可。
 
-## 自动命名（器件名/路径/实例名，用户不必手动填）
+## 自动命名（器件名/路径/实例名，全自动）
 
-- **器件名**：从用户自然语言提取关键参数自动生成，如「2.4GHz 下 L≈10nH 电感」→ `ind-2p4g-10nh`；无法提取时按 `ind-001`、`ind-002`…全局递增（依据 `workDirRoot` 下已有目录）。
+- **器件名**：从规格自动生成，如「2.4GHz 下 L≈5nH 电感」→ `ind-2p4g-5nh`；提取不到时按
+  `ind-001`、`ind-002`…全局递增（依据 `workDirRoot` 下已有目录）。
 - **work_dir** = `<workDirRoot>/<器件名>`（`epcd_project init` 的 `work_dir`）。
 - **实例名** = `<器件名>-inst`（`epcd_device add` 的 `name`）。
-- **session / db**：`--session <器件名>`；`--db` 固定为项目工作区 `backend/epcd-agent-session.sqlite3`（单一事实源，审计+恢复）。
-- 以上自动生成的命名在 **M1 确认卡里一并展示**，用户可在「修改」选项里改器件名/实例名，改后派生路径随之更新。
+- **session / db**：`--session <器件名>`；`--db` 固定为 `epcd-agent-session.sqlite3`
+  （相对 `backend/` 工作目录，即 `<repo>/backend/epcd-agent-session.sqlite3`，单一事实源，审计+恢复）。
+- 以上命名/路径**全自动生成、不进任何确认卡**；用户无需（也不应被要求）手动填或改。
 
-## epcd_agent.cli 调用范式（本机 pwsh）
+## epcd_cli 调用范式（进程直调，Win11 / Linux 通用）
 
-工作目录 `backend/`，所有参数经 **stdin 一个 UTF-8 JSON 对象**，stdout 恰好一行
-JSON，退出码 0 成功 / 1 业务失败（结构化错误仍在 stdout）/ 2 用法错误：
+**一律用 `epcd_cli` 宿主工具直调后端，绝不手写 pwsh/bash 命令行**——这样同一份
+流程在 Windows 本机与 Linux 部署服务器上都能跑（工具内部按平台自动选
+`.venv/Scripts/python.exe` 或 `.venv/bin/python`，`spawn` 直调、无 shell）。
 
-```powershell
-$in = '{"action":"init","work_dir":"<自动生成的work_dir>","technology":"<全局配置technology>"}'
-$in | .\.venv\Scripts\python.exe -m epcd_agent.cli `
-  --server <全局配置ssh> `
-  --db backend/epcd-agent-session.sqlite3 --session <器件名> epcd_project
+工具入参：`tool`（12 个后端工具名之一）、`input`（stdin 传给该工具的一个 JSON 对象）、
+`server`（`backend/servers.json` 的别名，可选，省略用默认）、`session`（可选，省略用 default）。
+`--db` 由工具固定落在 backend 工作目录（`epcd-agent-session.sqlite3`，相对 backend）。
+
+健康检查（`tool="epcd_health"`，`input` 空对象，`server=<项目配置ssh>`，`session="probe"`）：
+
+```text
+epcd_cli { tool: "epcd_health", input: {}, server: "<项目配置ssh>", session: "probe" }
 ```
 
-> `--server <ssh>` 从 `backend/servers.json` 读 `{ssh, pkg}`；等价显式写法
-> `--ssh <alias> --pkg <pkg>`（`--ssh` 接受 `~/.ssh/config` 别名）。`--server`
-> 未命中 / `servers.json` 缺该别名 / 文件缺失 → 退出码 2（USAGE）。
+普通工具（`input` 传字典给工具函数）：
 
-12 个工具：`epcd_health` / `epcd_template` / `epcd_project` / `epcd_device` /
-`epcd_config` / `epcd_formula` / `epcd_run` / `epcd_job` / `optimization_start` /
-`optimization_status` / `optimization_cancel` / `artifact_view`。
+```text
+epcd_cli {
+  tool: "epcd_project",
+  input: { action: "init", work_dir: "<自动生成的work_dir>", technology: "<项目配置technology>" },
+  server: "<项目配置ssh>",
+  session: "<器件名>"
+}
+```
+
+> `server` 从 `backend/servers.json` 读 `{ssh, pkg}`；等价显式写法是
+> `input.ssh` + `input.pkg`（极少用）。`server` 未命中 / `servers.json` 缺别名 / 文件缺失 → 退出码 2。
+
+12 个后端工具（`tool` 取值）：`epcd_health` / `epcd_template` / `epcd_project` /
+`epcd_device` / `epcd_config` / `epcd_formula` / `epcd_run` / `epcd_job` /
+`optimization_start` / `optimization_status` / `optimization_cancel` / `artifact_view`。
+
+## config 配方（复制即用）
+
+`epcd_config patch` = **JSON merge patch**（stdin 只提交顶层改项；`--if-match` 的 digest 自动带/自动更新，永不手填）。
+完整可复制模板见 `references/config-patch-templates.md`（读它即可，勿再翻 backend/demo、backend/tests）。
+
+三条最关键的坑（其余细节进上面那份文档）：
+
+- **metrics 两套名字**：写入 objectives 用显示名 `Inductance Value(nH)` / `Min Q Factor` / `Max Size(um)`；
+  读 job result 验收用短 key `L` / `Q` / `maxSize`。
+- **apply-result 顺序**：校验当前 digest == job 的 `configDigestUsed`，否则报 `JOB_CONFIG_CHANGED`；
+  「放宽目标」必须**先 apply-result 写回几何 → 再 patch 放宽 objectives → 再 epcd_run final**，顺序不能反。
+- **最终结果**：`epcd_run final` 只回 `jobId`+`status`，必须再 `epcd_job action="result"` 取 `targetValues`/`artifacts`。
+
+## 确认卡写作规范（最小卡 / 单用途）
+
+**一张卡只解决一个决策点**，绝不把不同决策点堆进同一张卡（这是硬纪律）：
+
+- 一个 `ask_user_question` 只对应一个决策点：目标卡只列目标、模板卡只列模板、结果卡只列结果。
+- **逐项呈现**：每个目标一行 `指标: 值`（如 `L: 5 nH · Q: ≥8 · size: ≤300 µm · freq: 2.4 GHz`），
+  缺项标「默认代入」，可读、可逐项改。
+- 数字/指标用紧凑列表或小表，**不要**贴 JSON 原文。
+- 选项固定三选「批准 / 修改后批准 / 终止」，每个 option 的 description 写一句
+  「点了会发生什么」；「修改后批准」的 description 写清本卡能改哪些项。
 
 ## 阶段流程
 
-1. **健康检查（自主）**：`epcd_health`。`data.status=="degraded"` 时解释原因并停。
-2. **建工程（自主）**：`epcd_project` init（`work_dir` = 自动生成路径 + `technology`
-   = 全局配置工艺）；随后 describe + validate。
-3. **选型（自主 + M1 确认）**：优先用本地对比表 `references/inductor-templates-comparison.md`
-   （9 个电感/tcoil 模板的 opt 边界、synth 默认目标、指标族），仅未覆盖信息才回退
-   `epcd_template` list/describe。向用户展示候选 + **自动生成的器件名/实例名/工作路径**，
-   **用 `ask_user_question` 做 M1**（批准 / 修改（可改器件名·实例名·模板）/ 终止）。
-   批准后 `epcd_device` add。
-4. **目标与仿真配置（M2 确认）**：`epcd_config` schema/get 取骨架与 digest；
-   按模板 synth 组 suffix+default 构造 synthesisTargets。**评分目标由 objectives 直接
-   生效**（metric 用模板族名：`Inductance Value(nH)`→L、`Min Q Factor`→Q、`Max Size(um)`→size，
-   `targetValue` 写数值）。**不需 customMetrics 注入**；真要自定义公式才放
-   `/synthesisTargets/customMetrics`（勿与内置同名，否则 `CUSTOM_METRIC_CONFLICT`）。
-   扫频按目标推导：point 目标不配扫频；range 目标顶层 sweep 覆盖 range；模板 EM 必须
-   sweep 时（stack 家族）用最小覆盖带宽。sweep patch 放 JSON **顶层** `{"sweeps":[...]}`。
-   把指标/频点/比较/权重/扫频/预算（默认 max_rounds=3、startup_trials=3）合并成一张
-   **`ask_user_question` M2 确认卡**。批准后 `epcd_config` patch（objectives 与 sweeps
-   分开提交，每次用最新 digest，`--if-match` 由工具自动注入）。
-5. **迭代优化（自主，预算内）**：`optimization_start` **用 pwsh `run_in_background` 后台
-   启动**（它在单进程里阻塞跑完整 TPE 循环，几分钟量级；跨进程取消经 Store SQLite
-   `kv_state`，与本进程无关）。stdin 传 `parameter_schema`（**用 live `config schema` 的
-   `device.parameters.opt` 构造**，不用 describe 原样——describe 的 opt 为空会坠入 22 维
-   addinParams 兜底空间，L/Q 恒定无优化信号）、`initial_candidates`（1~2 组起点）、预算。
-   前台轮询 `optimization_status`（读 SQLite，跨进程安全）；喊停 `optimization_cancel`
-   （写 cancel 标志，控制器每轮 cancel_probe 检查）；后台 job 结束用 `job_output` 收报告。
-   `OPTIMIZATION_PAUSED` 时读 `data.errors`/`category` 诊断并询问用户；
-   succeeded+warnings+空 targetValues 是失败轮，控制器按 FAIL 处理让 TPE 规避，不暂停。
-6. **写回（M3 确认）**：报告 best cost / 各指标达成（`ask_user_question` M3），批准后
-   `epcd_config` apply-result（jobId=best_job_id）。
-7. **最终仿真（M4 确认）**：`ask_user_question` M4 批准后 `epcd_run` final：不带候选输入、
-   `request_id="final-<best-job-id>"`。**验收口径**：读最终 job 的 `targetValues`，核对每条
-   `targetValue == 配置 objectives 值`，`satisfied` 判达标，`parametersUsed` 应含写回几何。
-8. **交付**：`artifact_view`（带 fetch_dir）取最终 job 产物卡片；或 `ssh_download` 批量拉取
-   GDS/版图/SNP/目标值/图表；向用户汇报路径。
+### 0. 确认原则（第一性）
+
+用户在整个流程里只确认两件**主观决策**，其余全部自动生成并自动执行：
+
+| 决策点 | 何时确认 |
+| --- | --- |
+| synth 目标 | **只有用户没给具体指标时**，逐项确认 |
+| 模板 | **总是**确认（按目标推荐） |
+
+**全自动、不进任何卡**：器件名 / 实例名 / `work_dir` / `session`；仿真配置（objectives、
+sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schema` 用模板
+`describe().parameterSchema`、`initial_candidates` 1~2 组、`max_rounds` 按模板推荐）。
+
+### 1. 快速启动（自主）
+读项目配置 + `epcd_health`，`degraded` 停。
+
+### 2. 目标与模板确认（执行前仅有的确认）
+
+- **用户给了具体 synth 目标**（如「2.4GHz、L≈10nH、Q>20、≤300µm」）→ **跳过目标确认**，直接确认模板。
+- **用户没给目标** → 先「逐项确认目标」，批准后再确认模板。
+
+**逐项确认目标**（最小卡，只放目标）：每项一行 `L / Q / size / freq`；提取不到的项给 MVP
+默认（2.4GHz、L=5nH、Q≥8、≤300µm）并标「默认代入」，可逐项改。
+
+**确认模板**（最小卡，只放模板）：按目标读 `references/inductor-templates-comparison.md`
+（未覆盖再 `epcd_template list/describe`）推荐模板；卡里只放 模板名 + `template_id` + 优化边界（紧凑一行）。
+
+> 「目标」是设计要什么、「模板」是在哪个空间里找——这是执行前仅有的（目标缺失时两次，否则一次）确认。
+
+### 3. 自动执行（不打断，一路跑到全部仿真结果）
+
+批准模板后**连续自动**执行、中途不发起任何确认：
+
+1. `epcd_project init`（`work_dir` + `technology`）→ describe → validate
+2. `epcd_device add`（`template_id` + 自动实例名）
+3. `epcd_config schema/get` → 按已确认目标构造 `synthesisTargets`/objectives；
+   sweep 按目标自动推导：point 目标不配扫频，range 目标顶层 `sweeps` 覆盖 range，
+   stack 家族模板用最小覆盖带宽
+4. `epcd_config patch`（objectives 与 sweeps 分开提交、每次最新 digest）
+5. `optimization_start` 后台启动（唯一例外，见下）：
+   `parameter_schema` 必须用模板 `describe()` 返回的 `parameterSchema`（优化边界只在这里；
+   `config schema` 的 `device.parameters` 是默认值骨架、`addinParams` 是面板参数堆——都不是优化空间）；
+   `initial_candidates` 1~2 组；`max_rounds` 按模板推荐。
+   —— `optimization_start` 内部阻塞整轮 TPE（每轮 ~25s × 多轮），不能用同步 `epcd_cli`；
+   改用**当前平台的 shell 工具 `run_in_background`**（Win11 用 pwsh、Linux 部署服务器用 bash，
+   DSH 已按平台二选一，二者行为对称，不依赖 pwsh）。命令用 backend venv 的 python：
+   - Win11：`backend\.venv\Scripts\python.exe -m epcd_agent.cli --server <ssh> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
+   - Linux：`backend/.venv/bin/python -m epcd_agent.cli --server <ssh> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
+   + stdin 传 `{"parameter_schema":…,"initial_candidates":…,"max_rounds":…}`（工作目录 = `backend/`）。
+   其余 11 个工具仍一律走 `epcd_cli`（`epcd_cli` 内部已按平台自动选 python，无需区分）。
+6. **紧轮询** `optimization_status`（读 SQLite）：`optimization_start` 是后台任务、内部**逐轮**写库
+   （每轮 `_record_round` 落 `rounds`/`consumed.rounds`）；因此**每读到 `done_rounds` 增加一轮，就立刻调一次
+   `epcd_status` 刷新进度条**，让进度逐轮推进（0→1→…→20），**绝不让多轮攒成一次 epcd_status**。
+   不要用 `job_output(wait=true)` 长时间阻塞等待整体结束——那会让进度条从 0 直接跳到收尾；
+   `request_prefix` 默认已唯一，**不要复用同一前缀**。
+7. 读 best job `targetValues`，对照每条 objective 做差距表
+
+仅 `OPTIMIZATION_PAUSED`（读 `data.errors`/`category` 诊断）/ degraded 等**硬故障**才停下问用户。
+
+### 4. 结果确认（全部结果出来后，才向用户确认）
+
+- **未达标** → 一张卡主动给三条方案：① 追轮续优 ② 放宽目标为区间 ③ 换模板；每条 option
+  description 写预期收益/代价。
+- **达标** → 一张卡问是否**写回**。
+
+批准后 `epcd_config apply-result`（`jobId=best_job_id`）。
+
+**追轮续优（勿从头）**：`optimization_start(parameter_schema=…, initial_candidates=[上次best],
+resume_from=<上一 task_id>, max_rounds=<新增轮数>)`。`resume_from` 把上一 task 的成功轮（参数+cost）
+喂回 TPE 后验继续；`max_rounds` 是**本轮新增轮数**（不是累计总数），`data.warm_started_rounds` 供汇报。
+
+### 5. 最终仿真确认 → 交付
+写回后 `ask_user_question` 确认最终仿真 → `epcd_run final`（不带候选、`request_id="final-<best-job-id>"`、
+`wait=true` 不传 timeout）。验收：逐条 `targetValue == objectives`、`satisfied` 判达标、`parametersUsed` 含写回几何。
+交付：`artifact_view`/`ssh_download` 拉产物，`epcd_artifacts` 渲染图库——
+版图三视图（`preview_top`/`preview_iso`/`preview_side`，kind=`image`，label=俯视/轴测/侧视）+ S2P/GDS/目标值。
 
 ## 硬规则
 
-- 里程碑 M1~M4 必须 `ask_user_question` 确认，三选项语义：批准 / 修改后批准 / 终止，
-  每次确认的选项与理由在验收报告留痕。
+- 仅有的用户确认点：synth 目标（仅当用户没给具体指标）/ 模板（推荐）/ 结果确认（写回或优化方案）/
+  最终仿真，全部用 `ask_user_question`，三选项语义：批准 / 修改后批准 / 终止，留痕。
+- 除项目配置缺失字段外，目标/模板确认之前不发任何提问；命名/路径/仿真配置/TPE 参数一律自动、不确认。
 - id/digest/jobId 永远取自工具响应，绝不从路径或名字推测。
 - 分支只看 `ok`/`error.type`/退出码；`error.message` 只给用户看，绝不程序分支。
 - `job result` 的 `status=="succeeded"` 不等于仿真成功：必须检查 `warnings`（如
@@ -102,14 +206,11 @@ $in | .\.venv\Scripts\python.exe -m epcd_agent.cli `
 - 候选信封（血泪教训）：手动 `epcd_run` 候选的 input_obj 必带
   `{"schemaVersion":"epcd-candidate/v1","parameters":{...}}`；只传 `{"parameters":{...}}`
   会被服务端静默忽略、跑默认几何。优化控制器内部已带正确信封。
-- objectives patch 格式（冒烟实测）：`synthesisTargets` 需含 `frequencyMode:"points"`；
-  每条 objective 的 `frequency` 用 `{"mode":"point","value":2.4,"unit":"GHz"}`（`value` 是
-  **数字**）、`targetValue` 是**数字**、`weight` 是**整数 1~10**、`comparison` ∈
-  `equal|greater-than|less-than`。用字符串/缺 `frequencyMode` 会依次报
-  `INVALID_OBJECTIVE_TARGET`/`INVALID_OBJECTIVE_WEIGHT`/`INVALID_FREQUENCY`。
+- objectives patch 格式 / 写回顺序的完整模板见 `references/config-patch-templates.md`
+  （撰写前必读）；字段写错依次报 `INVALID_OBJECTIVE_TARGET` / `INVALID_OBJECTIVE_WEIGHT` /
+  `INVALID_FREQUENCY`；`frequencyMode` 档位与 objective 的 `frequency.mode` 不一致报
+  `FREQUENCY_MODE_MISMATCH`，写回前改 objectives 触发 `JOB_CONFIG_CHANGED`。
 - `epcd_run` final：`wait=true` 时**不要**传 `timeout_seconds`（服务端 `TIMEOUT_WITH_WAIT`；
   timeout 仅异步提交 wait=false 可用）。
+- 追加轮次用 `resume_from` 续优，**不从头重跑**；`request_prefix` 默认已唯一，别复用。
 - 同一调用自纠上限 2 次；退出码语义见 release §2/§10。
-- 预算：MVP 冒烟 max_rounds=3、startup_trials=3；生产按模板推荐（简单电感 ~10 轮、
-  几何受限 stack 家族 ≥20 轮），见 `references/tpe-tuning-9template-20260903.md`。
-- 提交前本地跑 `./.venv/Scripts/python -m pytest tests -q`，全绿再交付改动。

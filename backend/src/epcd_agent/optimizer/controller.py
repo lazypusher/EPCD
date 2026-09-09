@@ -18,20 +18,21 @@ from ..exitcodes import LOOP_TRANSIENT_EXIT_CODES
 from ..tools.base import ToolContext
 from ..tools.read import epcd_job
 from ..tools.write import epcd_run
-from .space import ParamSpec, normalize_candidate
+from .space import ParamSpec, normalize_candidate, to_optuna_distributions
+from .tpe_settings import DEFAULT_STARTUP_TRIALS
 
 TERMINAL_JOB_STATUSES = frozenset({"succeeded", "failed", "canceled"})
 _TPE_SEED = 20260817
-# TPE 的启动期轮数。optuna 默认 10：启动期是固定种子的纯随机游走、不消费观测，
-# 对 25s/轮的 EM 任务会白烧 10 轮且无学习（A/B 对照中两臂第 3 轮建议完全相同即因此）。
-# 压到 3：两个 enqueue 初始候选 + 第 3 轮观测后，第 4 轮起 TPE 用真实 cost 引导搜索。
-_TPE_STARTUP_TRIALS = 3
+# TPE 的启动期轮数（默认值，可被调用方/模板表覆盖）。optuna 默认 10：启动期是固定
+# 种子的纯随机游走、不消费观测，对 25s/轮的 EM 任务会白烧 10 轮且无学习。5 是机制上
+# 的下限（能让"好组"凑出 2 个点、KDE 拟合不退化），困难模板由模板表上调到 10。
+_TPE_STARTUP_TRIALS = DEFAULT_STARTUP_TRIALS
 _CONSECUTIVE_FAILURE_LIMIT = 2
 
 
 @dataclass(frozen=True)
 class OptimizationBudget:
-    max_rounds: int = 20
+    max_rounds: int = 15
     max_wall_seconds: float = 600.0
     target_cost: float | None = None
 
@@ -103,16 +104,23 @@ class OptimizationController:
                  request_prefix: str = "iteration", poll_interval: float = 2.0,
                  on_progress: Callable[[dict], None] | None = None,
                  task_id: str | None = None,
-                 cancel_probe: Callable[[], bool] | None = None):
+                 cancel_probe: Callable[[], bool] | None = None,
+                 resume_observations: Iterable[dict] = (),
+                 startup_trials: int = _TPE_STARTUP_TRIALS):
         self._ctx = ctx
         self._specs = tuple(specs)
         self._initial = [normalize_candidate(dict(c), self._specs) for c in initial_candidates]
+        # Warm-start observations: (parameters, cost) pairs from a prior task.
+        # Seeded into the Optuna study as completed trials so the TPE sampler
+        # continues from the prior posterior instead of re-exploring from round 1.
+        self._resume_observations = tuple(resume_observations)
         self._budget = budget
         self._prefix = request_prefix
         self._poll_interval = poll_interval
         self._on_progress = on_progress
         self._task_id = task_id
         self._cancel_probe = cancel_probe
+        self._startup_trials = startup_trials
         self._cancel_requested = False
         self._failures = 0
         self._rounds: list[RoundRecord] = []
@@ -135,7 +143,24 @@ class OptimizationController:
         study = optuna.create_study(
             direction="minimize",
             sampler=optuna.samplers.TPESampler(seed=_TPE_SEED,
-                                               n_startup_trials=_TPE_STARTUP_TRIALS))
+                                               n_startup_trials=self._startup_trials))
+        if self._resume_observations:
+            distributions = to_optuna_distributions(self._specs)
+            for obs in self._resume_observations:
+                if not isinstance(obs, dict):
+                    continue
+                cost = obs.get("cost")
+                if not isinstance(cost, (int, float)):
+                    continue
+                try:
+                    params = normalize_candidate(obs.get("parameters") or {}, self._specs)
+                    trial = optuna.trial.create_trial(
+                        params=params, distributions=distributions, value=float(cost))
+                    study.add_trial(trial)
+                except (ValueError, TypeError):
+                    # A malformed/out-of-space observation must never abort the
+                    # whole optimization; skip it and keep the valid history.
+                    continue
         for candidate in self._initial:
             study.enqueue_trial(candidate)
         self._task_update(status="running")

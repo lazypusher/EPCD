@@ -1,0 +1,6 @@
+{
+  "ssh": "epcd-primary",
+  "pkg": "/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default",
+  "technology": "/home/zhubo/demo_revised.ptxt",
+  "workDirRoot": "/home/zhubo/epcd-runs"
+}
