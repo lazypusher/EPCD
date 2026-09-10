@@ -37,13 +37,13 @@ cp "$DEPLOY_SRC/epcd-brand.mjs"         "$PROFILE_DST/"
 cp "$DEPLOY_SRC/profile-package.json"   "$PROFILE_DST/package.json"
 cp "$PFP_SRC/epcd-favicon.svg"          "$PROFILE_DST/"
 cp "$PFP_SRC/pnpm-workspace.yaml"       "$PROFILE_DST/"
-echo "  [1/4] profile -> $PROFILE_DST（完整版 cordis.patch + branding + package.json）"
+echo "  [1/5] profile -> $PROFILE_DST（完整版 cordis.patch + branding + package.json）"
 
 # ── 2. agent preset（persona + 精简工具集）─────────────────────────────────
 PRESET_DST="$DSH_HOME/.agent-presets/epcd"
 mkdir -p "$PRESET_DST"
 cp -r "$REPO_ROOT/platform-dsh/agent-preset/." "$PRESET_DST/"
-echo "  [2/4] agent preset -> $PRESET_DST"
+echo "  [2/5] agent preset -> $PRESET_DST"
 
 # ── 3. EPCD UI 插件（三处同步：packages 源 + node_modules + package.json）───
 PLUGIN_SRC="$REPO_ROOT/plugins/epcd-ui-persist"
@@ -54,21 +54,33 @@ cp "$PLUGIN_SRC/package.json" "$PKG_DST/"
 cp -r "$PLUGIN_SRC/lib"        "$PKG_DST/"
 cp "$PLUGIN_SRC/package.json" "$NM_DST/"
 cp -r "$PLUGIN_SRC/lib"        "$NM_DST/"
-echo "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（三处同步完成两处）"
+echo "  [3/5] epcd-ui-plugin -> packages/ 与 node_modules/（三处同步完成两处）"
 
 # ── 4. 树外依赖（dsh-ssh，经 dsh plugin 转发 pnpm）─────────────────────────
 #     注：0.1.5-rc.1 起 DSH 内置右侧 sidebar，无需再装第三方 dsh-better-sidebar。
 #     dsh plugin 本质 = 在 profile 目录跑 pnpm add，故同时需要 dsh（或 npx）与 pnpm。
 if command -v dsh >/dev/null 2>&1; then
   dsh plugin --profile epcd add "@linxin666/dsh-ssh"
-  echo "  [4/4] dsh-ssh 已安装"
+  echo "  [4/5] dsh-ssh 已安装"
 elif command -v npx >/dev/null 2>&1; then
   npx @deepseek-ai/dsh plugin --profile epcd add "@linxin666/dsh-ssh"
-  echo "  [4/4] dsh-ssh 已安装（经 npx）"
+  echo "  [4/5] dsh-ssh 已安装（经 npx）"
 else
-  echo "  [4/4] 未找到 dsh / npx 命令，跳过依赖安装。请手动执行：" >&2
+  echo "  [4/5] 未找到 dsh / npx 命令，跳过依赖安装。请手动执行：" >&2
   echo "        npx @deepseek-ai/dsh plugin --profile epcd add '@linxin666/dsh-ssh'" >&2
   echo "        （需先确保 pnpm 在 PATH：corepack enable pnpm 或 npm i -g pnpm）" >&2
+fi
+
+# ── 5. backend Python 环境（uv sync）─────────────────────────────────────────
+#     epcd_cli 工具 spawn backend/.venv 的 python 跑 epcd_agent.cli，需 .venv 就绪。
+#     uv 按 uv.lock 建 3.13 环境（服务器系统 Python 3.9 也由 uv 自动下载管理）。
+if command -v uv >/dev/null 2>&1; then
+  (cd "$REPO_ROOT/backend" && uv sync)
+  echo "  [5/5] backend Python 环境已就绪（uv sync）"
+else
+  echo "  [5/5] 未找到 uv，跳过 backend 环境。请手动执行：" >&2
+  echo "        安装 uv：curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  echo "        然后：cd backend && uv sync" >&2
 fi
 
 echo ""

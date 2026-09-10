@@ -10,7 +10,10 @@
 EPCD/
 ├─ backend/            # epcd_agent 确定性后端（python，保持不变）
 │  ├─ servers.json     # 全局服务器池（ssh 别名 + pkg 路径）
-│  └─ .venv/           # python 3.13 虚拟环境
+│  ├─ pyproject.toml   # PEP 621 项目元数据（setuptools 构建，uv 管理环境）
+│  ├─ .python-version  # 固定 Python 3.13
+│  ├─ uv.lock          # uv 锁文件（依赖版本可复现）
+│  └─ .venv/           # uv 管理的 python 3.13 虚拟环境（uv sync 生成）
 └─ platform/           # npm workspaces
    ├─ server/          # @epcd/server — Fastify 5 + TypeScript (NodeNext/ESM) + node:sqlite
    └─ web/             # @epcd/web — Vite + React 18 + dsh-client-ui-primitives
@@ -23,6 +26,21 @@ EPCD/
 - M1 模板选定 / M2 目标配置 / M3 最优参数写回 / M4 最终仿真，每个里程碑需**确认**（批准/修改/终止）。
 - `optimization_start` 阻塞整轮 TPE，平台将其 spawn 为后台进程，直接读同一 SQLite
   （`optimization_task`/`job`/`kv_state`）轮询进度，前端用 SSE 实时看板 + 取消。
+
+## 后端 Python 环境（uv）
+
+`backend/` 的 Python 环境用 [uv](https://docs.astral.sh/uv/) 管理，锁定在 Python 3.13：
+
+```bash
+cd backend
+uv sync          # 按 uv.lock 创建/更新 .venv，安装 epcd-agent（optuna 等依赖）
+```
+
+- 首次运行需先装 uv：`curl -LsSf https://astral.sh/uv/install.sh | sh`（或 `pip install uv`）。
+- 服务器系统 Python 可能是 3.9（低于 requires-python>=3.10），uv 会自动下载并管理 3.13。
+- `epcd_agent.cli` 由 DSH 宿主（`epcd_cli` 工具）spawn `backend/.venv/{bin/python,Scripts/python.exe}` 执行，
+  因此只要 `.venv` 由 `uv sync` 就绪即可，无需全局 Python。
+- 依赖变更后：改 `pyproject.toml` → `uv lock`（更新锁）→ `uv sync`（应用到环境）。
 
 ## 启动
 
