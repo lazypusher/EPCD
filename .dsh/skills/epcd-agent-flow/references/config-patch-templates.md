@@ -13,6 +13,19 @@
 - `--if-match` 的 digest 由 Session Store 自动带上、成功后自动更新；**永远不手填 digest**。
 - `id`/`digest`/`jobId`/`instanceId` 全部取自工具响应，绝不从路径或名字推测。
 
+### 0.1 epcd_config 的四个 action（与源码 `tools/config.py` 逐字对齐）
+
+| action | stdin 关键字 | 用途 |
+| --- | --- | --- |
+| `schema` | `{action:"schema", path?}` | 读**可写配置契约 schema**（`schemaVersion:"epcd-device-schema/v1"`），用于核对字段约束。**注意：不是 `schema/get`，也没有 `/` 分隔**。 |
+| `get` | `{action:"get", path?}` | 读当前 config 值（`value` + `configDigest`），**并登记 digest** 到 Store。 |
+| `patch` | `{action:"patch", patch_obj:{…}}` | JSON merge patch；`--if-match` 的 digest 自动带/自动更新。 |
+| `apply-result` | `{action:"apply-result", job_id:"<jobId>"}` | 把 job 的最优几何写回当前 config；**stdin 关键字是 `job_id`**（snake_case，不是 `jobId`）。 |
+
+> `epcd_config` 有两个来源、两套语义，极易混淆：
+> - **本 skill 里 `action=get/set` 的 `epcd_config`** 是 DSH 宿主 MCP 工具，读/写「项目配置」（ssh/pkg/technology/workDirRoot），与后端工具无关。
+> - **上表 + 后端的 `epcd_config`** 是 epcd-cli 的 config 工具（读/写器件 config 的 synthesisTargets/simulation）。
+
 ## 1. metrics 两套名字（别混用）
 
 | 物理量 | objectives 写入（metric 显示名，最稳） | job result 读取/验收（短 key） |
@@ -104,18 +117,38 @@ error.message = "Objective frequency conflicts with frequencyMode"
 `apply-result` 校验**当前 config digest == job 的 `configDigestUsed`**，不匹配报
 `JOB_CONFIG_CHANGED: Device config changed after the job was created`。
 
+stdin 写法（**apply-result 用 `job_id`，snake_case**）：
+
+```text
+{"action":"apply-result","job_id":"<best_job_id>"}
+```
+
 「放宽目标」与「写回几何」的**唯一正确顺序**：
 
 1. `epcd_config apply-result(job_id=best_job_id)` —— **先写回几何**（此刻 digest 仍是优化时的 objectives）
 2. `epcd_config patch` 放宽 objectives（如 L=2.8、Q≥13）
-3. `epcd_run final`
+3. `epcd_run` 最终仿真（见 §5，**`task` 取值是 `simulation-evaluation`，不是 `final`**）
 
 反了（先 patch objectives 再 apply-result）必失败；补救 = 把 objectives patch 回优化时值 →
 apply-result → 再放宽。
 
 ## 5. 最终结果读取 / 验收
 
-`epcd_run final` 返回**只含 `jobId`+`status`，不含结果**；必须再
+**`epcd_run` 的 `task` 白名单（源码 `tools/write.py` `_RUN_TASKS`）只有两个值：**
+- `simulation-evaluation` —— 跑 EM 仿真并评估 objectives（最终仿真用它）
+- `gds-generation` —— 只产 GDS
+
+没有叫 `final` 的 task；skill 里的「final」是**流程语义**（写回后的最终仿真），
+落到 `epcd_run` 时 **`task` 必须填 `simulation-evaluation`**（否则报 `unsupported run task: 'final'`）。
+
+**`epcd_run` 的入参关键字**（stdin）：`task` / `request_id` / `input_obj`（候选信封，可选）/
+`wait` / `timeout_seconds` / `use_if_match`。最终仿真调用：
+
+```text
+{"task":"simulation-evaluation","request_id":"final-<best-job-id>","wait":true}
+```
+
+`epcd_run` 返回**只含 `jobId`+`status`，不含结果**；必须再
 `epcd_job action="result" job_id=<jobId>` 取正式结果：
 
 - `targetValues[].satisfied` 每条都 `true` 才算达标；`actualValue`/`relativeDeviation` 做差距表。
@@ -125,9 +158,31 @@ apply-result → 再放宽。
 
 ## 6. optimization_start 的 parameter_schema
 
-直接传 `epcd_template describe` 返回的 `parameterSchema`（`properties.opt`=优化空间，
-`x-epcd-locked:true` 的参数被排除，如 adv_simple_inductor 锁定 trackSpace）；或只传
-`{"template_id":"<id>"}`（内部自动 describe、等价）。`initial_candidates` 启 1~2 组、只填 opt 参数名。
+**三种等价传法（按优先级，源码 `tools/read.py` + `platform/optimize_tools.py::_space_from_schema`）：**
 
-> 优化空间参数名 = config `device.parameters.opt` 的 key（trackWidth / numOfTurns / innerRadius…），
-> 与 describe `parameterSchema.properties.opt.properties` 的 key 一致。
+1. **只传 `{"template_id":"<id>"}`（最简、推荐）** —— 内部自动 `describe()` 拿 `parameterSchema`。
+2. 直接传 describe 返回的完整 `parameterSchema`（嵌套 `basic`/`opt`/`synth`）。
+3. legacy 服务端无 parameterSchema 时，回退 `describe().addinParams`（面板参数堆，**非首选**）。
+
+`initial_candidates` 启 1~2 组、只填 opt 参数名。
+
+> 优化空间参数名 = 模板 `describe().parameterSchema.properties.opt.properties` 的 key
+> （trackWidth / numOfTurns / innerRadius…），与 config 的 `device.parameters.opt` 的 key 一致。
+
+### 6.1 `x-epcd-locked`：为什么有的 opt 参数不进 TPE 优化空间
+
+优化空间 = `describe().parameterSchema` 里 **`properties.opt` 组中满足全部三条**的参数：
+
+1. `x-epcd-enabled` 为 true（或未标，默认 enabled）；
+2. `x-epcd-locked` **不为 true**（locked = 模板作者声明该参数为「设计固定值」，TPE 不搜）；
+3. 有可用边界（`minimum`/`maximum`，或 `enum` 分类、或 step/`multipleOf`）。
+
+`x-epcd-locked` / `x-epcd-enabled` 是 **epcd-cli 接口真实返回的模板元数据**，不是 agent 侧
+擅自过滤，也不是 TPE 全局写死某参数名。当前实例：`system.inductor.simple_inductor` 的
+`trackSpace` 返回 `x-epcd-locked:true`（实测 verify 2026-09），所以 TPE 只优化
+trackWidth / numOfTurns / innerRadius 三项；`trackSpace` 保持默认值 2.0。
+
+> 语义边界：opt 组**默认**应全部进优化空间；`x-epcd-locked:true` 是模板层面对「这个 opt
+> 参数本轮不做自由变量」的声明，agent 尊重它即可。若某模板的 opt 参数异常地被标 locked
+> 而业务上应该可优化，那是**模板元数据问题**，应修模板 describe 返回，而不是在 agent 侧
+> 反向解锁（源码 `space.py::_is_locked` 不提供解锁旁路，也不该提供）。

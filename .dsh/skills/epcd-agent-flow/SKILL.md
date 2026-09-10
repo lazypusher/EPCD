@@ -102,7 +102,7 @@ epcd_cli {
   读 job result 验收用短 key `L` / `Q` / `maxSize`。
 - **apply-result 顺序**：校验当前 digest == job 的 `configDigestUsed`，否则报 `JOB_CONFIG_CHANGED`；
   「放宽目标」必须**先 apply-result 写回几何 → 再 patch 放宽 objectives → 再 epcd_run final**，顺序不能反。
-- **最终结果**：`epcd_run final` 只回 `jobId`+`status`，必须再 `epcd_job action="result"` 取 `targetValues`/`artifacts`。
+- **最终结果**：`epcd_run`（`task="simulation-evaluation"`）只回 `jobId`+`status`，必须再 `epcd_job action="result"` 取 `targetValues`/`artifacts`。
 
 ## 确认卡写作规范（最小卡 / 单用途）
 
@@ -152,9 +152,11 @@ sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schem
 
 1. `epcd_project init`（`work_dir` + `technology`）→ describe → validate
 2. `epcd_device add`（`template_id` + 自动实例名）
-3. `epcd_config schema/get` → 按已确认目标构造 `synthesisTargets`/objectives；
-   sweep 按目标自动推导：point 目标不配扫频，range 目标顶层 `sweeps` 覆盖 range，
-   stack 家族模板用最小覆盖带宽
+3. `epcd_config schema`（action=`schema`，**不是 `schema/get`**）→ 按已确认目标构造
+   `synthesisTargets`/objectives；sweep 按目标自动推导：point 目标不配扫频，range 目标顶层
+   `sweeps` 覆盖 range，stack 家族模板用最小覆盖带宽。
+   ⚠️ 此 `epcd_config` 是 epcd-cli 的 config 工具（读/写器件 config），**区别于**「项目配置」
+   一节的 `epcd_config`（DSH 宿主工具，action=get/set 读/写 ssh/pkg/technology/workDirRoot）。
 4. `epcd_config patch`（objectives 与 sweeps 分开提交、每次最新 digest）
 5. `optimization_start` 后台启动（唯一例外，见下）：
    `parameter_schema` 必须用模板 `describe()` 返回的 `parameterSchema`（优化边界只在这里；
@@ -182,15 +184,17 @@ sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schem
   description 写预期收益/代价。
 - **达标** → 一张卡问是否**写回**。
 
-批准后 `epcd_config apply-result`（`jobId=best_job_id`）。
+批准后 `epcd_config apply-result`（stdin 关键字 `job_id`=best_job_id，`{"action":"apply-result","job_id":"<best_job_id>"}`）。
 
 **追轮续优（勿从头）**：`optimization_start(parameter_schema=…, initial_candidates=[上次best],
 resume_from=<上一 task_id>, max_rounds=<新增轮数>)`。`resume_from` 把上一 task 的成功轮（参数+cost）
 喂回 TPE 后验继续；`max_rounds` 是**本轮新增轮数**（不是累计总数），`data.warm_started_rounds` 供汇报。
 
 ### 5. 最终仿真确认 → 交付
-写回后 `ask_user_question` 确认最终仿真 → `epcd_run final`（不带候选、`request_id="final-<best-job-id>"`、
-`wait=true` 不传 timeout）。验收：逐条 `targetValue == objectives`、`satisfied` 判达标、`parametersUsed` 含写回几何。
+写回后 `ask_user_question` 确认最终仿真 → `epcd_run`（`task="simulation-evaluation"`、
+`request_id="final-<best-job-id>"`、`wait=true` 不传 timeout）。注意 `epcd_run` 的 `task` 白名单
+只有 `simulation-evaluation` / `gds-generation`，**没有 `final`**；「final」只是流程语义，落在
+`request_id` 前缀。验收：逐条 `targetValue == objectives`、`satisfied` 判达标、`parametersUsed` 含写回几何。
 交付：`artifact_view`/`ssh_download` 拉产物，`epcd_artifacts` 渲染图库——
 版图三视图（`preview_top`/`preview_iso`/`preview_side`，kind=`image`，label=俯视/轴测/侧视）+ S2P/GDS/目标值。
 
@@ -210,7 +214,7 @@ resume_from=<上一 task_id>, max_rounds=<新增轮数>)`。`resume_from` 把上
   （撰写前必读）；字段写错依次报 `INVALID_OBJECTIVE_TARGET` / `INVALID_OBJECTIVE_WEIGHT` /
   `INVALID_FREQUENCY`；`frequencyMode` 档位与 objective 的 `frequency.mode` 不一致报
   `FREQUENCY_MODE_MISMATCH`，写回前改 objectives 触发 `JOB_CONFIG_CHANGED`。
-- `epcd_run` final：`wait=true` 时**不要**传 `timeout_seconds`（服务端 `TIMEOUT_WITH_WAIT`；
+- `epcd_run` 最终仿真（`task="simulation-evaluation"`）：`wait=true` 时**不要**传 `timeout_seconds`（服务端 `TIMEOUT_WITH_WAIT`；
   timeout 仅异步提交 wait=false 可用）。
 - 追加轮次用 `resume_from` 续优，**不从头重跑**；`request_prefix` 默认已唯一，别复用。
 - 同一调用自纠上限 2 次；退出码语义见 release §2/§10。
