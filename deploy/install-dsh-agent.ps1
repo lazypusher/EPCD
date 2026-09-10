@@ -78,7 +78,8 @@ if (Test-Path $Candidate1) {
 }
 if (-not $DshBin) {
     Write-Warning "  [4/4] 未找到 dsh bin.js，跳过依赖安装。请手动执行："
-    Write-Warning "        dsh plugin --profile epcd add '@linxin666/dsh-ssh'"
+    Write-Warning "        npx @deepseek-ai/dsh plugin --profile epcd add '@linxin666/dsh-ssh'"
+    Write-Warning "        （需先确保 pnpm 在 PATH）"
 } else {
     node $DshBin plugin --profile epcd add "@linxin666/dsh-ssh"
     Write-Host "  [4/4] dsh-ssh 已安装"
@@ -87,5 +88,5 @@ if (-not $DshBin) {
 Write-Host ""
 Write-Host "部署完成。" -ForegroundColor Green
 Write-Host "  下一步（一次性）：编辑/确认 $RepoRoot\epcd-config.json 的 ssh/pkg/technology/workDirRoot"
-Write-Host "  启动：dsh --profile epcd --port 8091"
+Write-Host "  启动：npx @deepseek-ai/dsh --profile epcd --port 8091  （headless 服务器加 EPCD_HOST=0.0.0.0 前缀）"
 Write-Host "  浏览器：http://127.0.0.1:8091"

@@ -58,16 +58,21 @@ echo "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（三处同步完成
 
 # ── 4. 树外依赖（dsh-ssh，经 dsh plugin 转发 pnpm）─────────────────────────
 #     注：0.1.5-rc.1 起 DSH 内置右侧 sidebar，无需再装第三方 dsh-better-sidebar。
+#     dsh plugin 本质 = 在 profile 目录跑 pnpm add，故同时需要 dsh（或 npx）与 pnpm。
 if command -v dsh >/dev/null 2>&1; then
   dsh plugin --profile epcd add "@linxin666/dsh-ssh"
   echo "  [4/4] dsh-ssh 已安装"
+elif command -v npx >/dev/null 2>&1; then
+  npx @deepseek-ai/dsh plugin --profile epcd add "@linxin666/dsh-ssh"
+  echo "  [4/4] dsh-ssh 已安装（经 npx）"
 else
-  echo "  [4/4] 未找到 dsh 命令，跳过依赖安装。请手动执行：" >&2
-  echo "        dsh plugin --profile epcd add '@linxin666/dsh-ssh'" >&2
+  echo "  [4/4] 未找到 dsh / npx 命令，跳过依赖安装。请手动执行：" >&2
+  echo "        npx @deepseek-ai/dsh plugin --profile epcd add '@linxin666/dsh-ssh'" >&2
+  echo "        （需先确保 pnpm 在 PATH：corepack enable pnpm 或 npm i -g pnpm）" >&2
 fi
 
 echo ""
 echo "部署完成。"
 echo "  下一步（一次性）：编辑/确认 $REPO_ROOT/epcd-config.json 的 ssh/pkg/technology/workDirRoot"
-echo "  启动（headless 服务器需绑 0.0.0.0，见 deploy/README.md）：dsh --profile epcd --port 8091"
+echo "  启动（headless 服务器需绑 0.0.0.0，见 deploy/README.md）：EPCD_HOST=0.0.0.0 npx @deepseek-ai/dsh --profile epcd --port 8091"
 echo "  浏览器（局域网）：http://<服务器IP>:8091"

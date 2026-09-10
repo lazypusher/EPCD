@@ -1,7 +1,7 @@
 # EPCD 部署指南（形态 A：DSH Agent）
 
 把 EPCD 的 DSH 专用 profile / agent preset / UI 插件部署到目标机器，跑通
-「`dsh --profile epcd --port 8091`」这套 Agent 交互形态。
+「`npx @deepseek-ai/dsh --profile epcd --port 8091`」这套 Agent 交互形态。
 
 > 本指南只覆盖形态 A（依赖 DeepSeek Harness）。自研 Fastify 平台（形态 B）不在本仓库部署范围。
 
@@ -11,12 +11,28 @@
 
 | 依赖 | 来源 | 是否入 git |
 |------|------|-----------|
-| DSH 运行时 | `npx @deepseek-ai/dsh`（0.1.5-rc.1，内置右侧 sidebar）+ `@linxin666/dsh-ssh` | —（外部 install） |
+| DSH 运行时 | `@deepseek-ai/dsh` 0.1.5-rc.1（内置右侧 sidebar）+ `@linxin666/dsh-ssh` | —（外部 install） |
 | profile | **`plugins/epcd-ui-persist/deploy/`（权威）+ `platform-dsh/profile/`（favicon/pnpm-workspace）** | ✅ 入库 |
 | agent preset | `platform-dsh/agent-preset/*` | ✅ 入库 |
 | UI 插件 | `plugins/epcd-ui-persist/{package.json,lib/*}` | ✅ 入库 |
 | 配置 | `epcd-config.json`（ssh/pkg/technology/workDirRoot） | ✅ 入库（本项目约定） |
 | 编排 skill | `.dsh/skills/epcd-agent-flow/` | ✅ 入库 |
+
+### DSH 的两种安装形态（本指南里所有命令都给出两种写法）
+
+| 形态 | 安装 | 启动 / 管插件 |
+|------|------|--------------|
+| **全局安装** | `npm i -g @deepseek-ai/dsh@0.1.5-rc.1` | `dsh --profile epcd ...` / `dsh plugin ...` |
+| **npx 免安装** | 无需安装（`npx` 自动缓存） | `npx @deepseek-ai/dsh --profile epcd ...` / `npx @deepseek-ai/dsh plugin ...` |
+
+两条路**等价**，任选其一；混用时本指南已同时列出。需要注意：
+
+- **`dsh plugin add` 本质是在 profile 目录里跑 `pnpm`**（`dsh` 内部转发给 pnpm），所以
+  不论走全局还是 npx，**目标机都必须有 `pnpm`**（`corepack enable pnpm` 或
+  `npm i -g pnpm`），否则装插件会报「pnpm not found」。
+- **npx 陷阱**：若目标机「全局已装了旧版 dsh」，`npx @deepseek-ai/dsh`（不带版本号）
+  会**优先复用全局旧版**而不是拉最新——升级后务必先
+  `npm i -g @deepseek-ai/dsh@0.1.5-rc.1`，或显式写 `npx @deepseek-ai/dsh@0.1.5-rc.1`。
 
 > ⚠ **profile 权威源是 `plugins/epcd-ui-persist/deploy/`，不是 `platform-dsh/profile/`。**
 > `platform-dsh/profile/cordis.patch.yml` 是旧版：缺 `epcd-ui-plugin` insert 与存储隔离，
@@ -51,13 +67,17 @@ bash deploy/install-dsh-agent.sh
 完成后确认配置并启动：
 
 ```powershell
-# Windows 本机
+# Windows 本机（全局装了 dsh 用 dsh；未装全局用 npx）
 dsh --profile epcd --port 8091
+# 或
+npx @deepseek-ai/dsh --profile epcd --port 8091
 ```
 
 ```bash
 # Linux / CentOS（headless 需绑 0.0.0.0，见下）
 dsh --profile epcd --port 8091
+# 或
+npx @deepseek-ai/dsh --profile epcd --port 8091
 ```
 
 浏览器打开 `http://127.0.0.1:8091`（本机）或 `http://<服务器IP>:8091`（局域网）。
@@ -77,6 +97,8 @@ reject：`--host 0.0.0.0 is intentionally not supported yet for safety`）。正
 ```bash
 # CentOS 部署服务器：绑定所有网卡供局域网访问
 EPCD_HOST=0.0.0.0 dsh --profile epcd --port 8091
+# 或（未装全局 dsh 时）
+EPCD_HOST=0.0.0.0 npx @deepseek-ai/dsh --profile epcd --port 8091
 
 # 或写进 systemd unit / 启动脚本的 Environment
 ```
@@ -124,6 +146,8 @@ cp -r plugins/epcd-ui-persist/lib       "$p/packages/epcd-ui-plugin/"
 cp plugins/epcd-ui-persist/package.json "$p/node_modules/epcd-ui-plugin/"
 cp -r plugins/epcd-ui-persist/lib       "$p/node_modules/epcd-ui-plugin/"
 dsh plugin --profile epcd add "@linxin666/dsh-ssh"
+# 或（未装全局 dsh 时；本质是在 profile 目录跑 pnpm，故需 pnpm 在 PATH）
+npx @deepseek-ai/dsh plugin --profile epcd add "@linxin666/dsh-ssh"
 ```
 
 ---
