@@ -23,6 +23,23 @@
   config:
     root: !!js dshHomePath('profiles/epcd/data/storages')
 
+# ── 监听地址：headless 服务器可绑 0.0.0.0 供局域网访问 ──
+# DSH 的 `--host 0.0.0.0` 命令行 flag 会被 dsh-web-app 出于安全拒绝，故不走 flag；
+# 这里覆盖 dsh-host-webserver 的 config.host，用环境变量 EPCD_HOST 控制：
+#   - 不设（默认）→ 127.0.0.1（仅回环，本机开发用，安全）
+#   - 部署服务器设 EPCD_HOST=0.0.0.0 → 向局域网开放（注意：DSH 自身不带 TLS/鉴权，
+#     需在反向代理/防火墙层自行加固）
+# patch 会整体 replace 该 row 的 config，故重述全部 key（id/name/inject 一并重述以求稳妥）。
+- id: webserver
+  name: '@deepseek-ai/dsh-host-webserver'
+  inject: [webStartup]
+  config:
+    host: !!js process.env.EPCD_HOST ?? '127.0.0.1'
+    port: !!js ctx.webStartup.port ?? 3080
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+
 # ── EPCD UI 插件：宿主工具 epcd_status/epcd_artifacts + 客户端进度条/三视图产物图库 ──
 - insert:
     - id: epcd-ui-plugin
