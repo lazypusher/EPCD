@@ -107,6 +107,44 @@ EPCD_HOST=0.0.0.0 npx @deepseek-ai/dsh --profile epcd --port 8091
 > 任意代码的 agent harness」暴露到网络，务必套一层反向代理（Nginx/Caddy，加 HTTPS +
 > 认证）或至少用防火墙限制来源网段，绝不能裸奔在公网。
 
+> ⚠ **为什么不能直接局域网访问 ssh tab**：`@linxin666/dsh-ssh` 的 `/api/dsh-ssh/*`
+> 端点带 **loopback-only trust fence**（源码 `loopback.ts`：要求请求 `remoteAddress`
+> 是 127.0.0.1），因为 SSH 面板能在远程服务器执行任意命令。从局域网 IP 直接访问会
+> 报 `forbidden: loopback-only`，模型 tab 报 `settings are unavailable`。**正确做法是
+> 走 SSH 隧道**，让请求来源变成 loopback。
+
+---
+
+## 远程访问（SSH 隧道 + token，完整可用）
+
+三步走通「本机浏览器 → 远程 EPCD」，且 ssh tab / 模型 tab / 设置都能正常用：
+
+**① 服务器端启动**（登录部署服务器后）：
+
+```bash
+cd ~/epcd && EPCD_HOST=0.0.0.0 npx @deepseek-ai/dsh --profile epcd --port 8091 --no-open
+```
+
+启动后终端会打印一行，记下 `token=XXXX` 那段（每次启动都变）。
+
+**② 本机建 SSH 隧道**（另开一个窗口，保持运行）：
+
+```bash
+ssh -L 8092:127.0.0.1:8091 eada@192.168.20.109 -N
+```
+
+（把本机 8092 映射到远程 127.0.0.1:8091；经隧道后远程看到的请求来源是 loopback，绕开 loopback-only fence）
+
+**③ 本机浏览器访问**（把 `XXXX` 换成第①步的 token）：
+
+```
+http://127.0.0.1:8092/?token=XXXX
+```
+
+首次带 `?token=` 访问，DSH 校验后自动签发 cookie 并跳转首页。
+
+> 注：本机 8092 是隧道端口，用 8092 而非 8091 是为了避开本机可能已在跑的本地 EPCD。
+
 ---
 
 ## 手动部署（等价步骤，脚本出问题时照此排查）
