@@ -11,7 +11,7 @@
 
 | 依赖 | 来源 | 是否入 git |
 |------|------|-----------|
-| DSH 运行时 | npm 全局 `@deepseek-ai/dsh` + `@linxin666/dsh-ssh` + `dsh-better-sidebar` | —（外部 install） |
+| DSH 运行时 | `npx @deepseek-ai/dsh`（0.1.5-rc.1，内置右侧 sidebar）+ `@linxin666/dsh-ssh` | —（外部 install） |
 | profile | **`plugins/epcd-ui-persist/deploy/`（权威）+ `platform-dsh/profile/`（favicon/pnpm-workspace）** | ✅ 入库 |
 | agent preset | `platform-dsh/agent-preset/*` | ✅ 入库 |
 | UI 插件 | `plugins/epcd-ui-persist/{package.json,lib/*}` | ✅ 入库 |
@@ -46,7 +46,7 @@ bash deploy/install-dsh-agent.sh
    pnpm-workspace）→ `~/.dsh/profiles/epcd/`
 2. 复制 agent preset → `~/.dsh/.agent-presets/epcd/`
 3. 同步 UI 插件 → `packages/epcd-ui-plugin/` + `node_modules/epcd-ui-plugin/`（三处同步）
-4. 安装树外依赖 `@linxin666/dsh-ssh` + `dsh-better-sidebar`
+4. 安装树外依赖 `@linxin666/dsh-ssh`（右侧 sidebar 由 DSH 0.1.5 内置，无需第三方）
 
 完成后确认配置并启动：
 
@@ -106,7 +106,6 @@ Copy-Item plugins\epcd-ui-persist\lib          "$p\packages\epcd-ui-plugin\" -Re
 Copy-Item plugins\epcd-ui-persist\package.json "$p\node_modules\epcd-ui-plugin\" -Force
 Copy-Item plugins\epcd-ui-persist\lib          "$p\node_modules\epcd-ui-plugin\" -Recurse -Force
 node "$env:APPDATA\npm\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile epcd add "@linxin666/dsh-ssh"
-node "$env:APPDATA\npm\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile epcd add "dsh-better-sidebar"
 ```
 
 ### Linux
@@ -125,7 +124,6 @@ cp -r plugins/epcd-ui-persist/lib       "$p/packages/epcd-ui-plugin/"
 cp plugins/epcd-ui-persist/package.json "$p/node_modules/epcd-ui-plugin/"
 cp -r plugins/epcd-ui-persist/lib       "$p/node_modules/epcd-ui-plugin/"
 dsh plugin --profile epcd add "@linxin666/dsh-ssh"
-dsh plugin --profile epcd add "dsh-better-sidebar"
 ```
 
 ---

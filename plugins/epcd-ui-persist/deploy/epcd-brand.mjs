@@ -28,8 +28,8 @@ const BRAND_CSS = [
   /* sidebar 顶部：DeepSeek 文字字标 → EPCD 文字 */
   '.hHd-Xa_brand svg{display:none!important}',
   '.hHd-Xa_brand::after{content:"EPCD 器件设计";font-size:15px;font-weight:600;color:var(--dsw-alias-label-primary);white-space:nowrap}',
-  /* 折叠态侧栏的鲸鱼图标 */
-  '.hHd-Xa_railFish{display:none!important}',
+  /* 折叠态侧栏的鲸鱼图标（0.1.5 起类名 railFish → railMark） */
+  '.hHd-Xa_railMark{display:none!important}',
   /* 空对话欢迎页 Hero 整行：slogan「探索未至之境」+「预览版」badge + 鲸鱼，一并隐藏 */
   '.pXSMma_headline{display:none!important}',
   /* 空对话欢迎页的鲸鱼图标（单独兜底） */

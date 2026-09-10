@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # EPCD 形态 A（DSH Agent）一键部署脚本
 #
 # 把仓库里的 EPCD profile / agent preset / UI 插件复制到本机 DSH home，
@@ -34,7 +34,7 @@ New-Item -ItemType Directory -Force -Path $ProfileDst | Out-Null
 # 完整版 cordis.patch.yml / epcd-brand.mjs（覆盖旧版）
 Copy-Item (Join-Path $DeploySrc 'cordis.patch.yml') $ProfileDst -Force
 Copy-Item (Join-Path $DeploySrc 'epcd-brand.mjs')   $ProfileDst -Force
-# profile-package.json 改名为 package.json（含 epcd-ui-plugin + dsh-better-sidebar 依赖）
+# profile-package.json 改名为 package.json（含 epcd-ui-plugin + dsh-ssh 依赖）
 Copy-Item (Join-Path $DeploySrc 'profile-package.json') (Join-Path $ProfileDst 'package.json') -Force
 # favicon + pnpm-workspace（deploy 目录没有，从 platform-dsh/profile 补）
 Copy-Item (Join-Path $PfpSrc 'epcd-favicon.svg')    $ProfileDst -Force
@@ -62,8 +62,8 @@ Copy-Item (Join-Path $PluginSrc 'package.json') $NmDst -Force
 Copy-Item (Join-Path $PluginSrc 'lib') $NmDst -Force -Recurse
 Write-Host "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（三处同步完成两处）"
 
-# ── 4. 树外依赖（dsh-ssh + dsh-better-sidebar，经 dsh plugin 转发 pnpm）──────
-#     完整版 profile package.json 的 bundles/dependencies 声明了这两者。
+# ── 4. 树外依赖（dsh-ssh，经 dsh plugin 转发 pnpm）────────────────────────
+#     注：0.1.5-rc.1 起 DSH 内置右侧 sidebar，无需再装第三方 dsh-better-sidebar。
 #     定位 dsh bin：优先 APPDATA 默认路径，其次 npm 全局前缀。
 $DshBin = $null
 $Candidate1 = Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh\lib\bin.js'
@@ -79,11 +79,9 @@ if (Test-Path $Candidate1) {
 if (-not $DshBin) {
     Write-Warning "  [4/4] 未找到 dsh bin.js，跳过依赖安装。请手动执行："
     Write-Warning "        dsh plugin --profile epcd add '@linxin666/dsh-ssh'"
-    Write-Warning "        dsh plugin --profile epcd add 'dsh-better-sidebar'"
 } else {
     node $DshBin plugin --profile epcd add "@linxin666/dsh-ssh"
-    node $DshBin plugin --profile epcd add "dsh-better-sidebar"
-    Write-Host "  [4/4] dsh-ssh + dsh-better-sidebar 已安装"
+    Write-Host "  [4/4] dsh-ssh 已安装"
 }
 
 Write-Host ""

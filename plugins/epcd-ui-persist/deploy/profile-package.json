@@ -2,8 +2,7 @@
   "name": "dsh-profile-epcd",
   "private": true,
   "dependencies": {
-    "@linxin666/dsh-ssh": "^0.3.16",
-    "dsh-better-sidebar": "^0.18.0",
+    "@linxin666/dsh-ssh": "^0.3.20",
     "epcd-ui-plugin": "file:./packages/epcd-ui-plugin"
   },
   "dsh": {
@@ -11,7 +10,6 @@
       "bundles": [
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
-        "dsh-better-sidebar",
         "@linxin666/dsh-ssh"
       ]
     }

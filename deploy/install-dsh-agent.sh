@@ -56,15 +56,14 @@ cp "$PLUGIN_SRC/package.json" "$NM_DST/"
 cp -r "$PLUGIN_SRC/lib"        "$NM_DST/"
 echo "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（三处同步完成两处）"
 
-# ── 4. 树外依赖（dsh-ssh + dsh-better-sidebar，经 dsh plugin 转发 pnpm）─────
+# ── 4. 树外依赖（dsh-ssh，经 dsh plugin 转发 pnpm）─────────────────────────
+#     注：0.1.5-rc.1 起 DSH 内置右侧 sidebar，无需再装第三方 dsh-better-sidebar。
 if command -v dsh >/dev/null 2>&1; then
   dsh plugin --profile epcd add "@linxin666/dsh-ssh"
-  dsh plugin --profile epcd add "dsh-better-sidebar"
-  echo "  [4/4] dsh-ssh + dsh-better-sidebar 已安装"
+  echo "  [4/4] dsh-ssh 已安装"
 else
   echo "  [4/4] 未找到 dsh 命令，跳过依赖安装。请手动执行：" >&2
   echo "        dsh plugin --profile epcd add '@linxin666/dsh-ssh'" >&2
-  echo "        dsh plugin --profile epcd add 'dsh-better-sidebar'" >&2
 fi
 
 echo ""

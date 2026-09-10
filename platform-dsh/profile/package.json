@@ -2,7 +2,7 @@
   "name": "dsh-profile-epcd",
   "private": true,
   "dependencies": {
-    "@linxin666/dsh-ssh": "^0.3.16"
+    "@linxin666/dsh-ssh": "^0.3.20"
   },
   "dsh": {
     "profile": {
