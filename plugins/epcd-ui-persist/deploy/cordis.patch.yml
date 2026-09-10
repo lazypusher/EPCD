@@ -7,6 +7,17 @@
 - id: web-search-deepseek
   disabled: true
 
+# ── 禁用 DeepSeek 请求扩展的插件清单枚举 ──
+# plugin-package-inventory-deepseek 在发 DeepSeek 请求前给请求附加 dsh_plugin_packages
+# 字段（枚举所有 active 插件并读各自 package.json）。EPCD profile 用了 file: 本地依赖
+# （epcd-ui-plugin）+ 树外插件（@linxin666/dsh-ssh）这种非标准布局，该枚举在解析某个
+# 插件的 manifest 时抛错 → 整个「请求扩展准备」失败 → 对话报
+# DeepSeek request extension preparation failed / REQUEST_EXTENSION。
+# 该字段只是可观测性元数据，非 DeepSeek API 必需，故在 EPCD profile 明确关闭枚举。
+- id: plugin-package-inventory-deepseek
+  config:
+    enabled: false
+
 # ── 专用模式：default 指向 epcd（用户根 ~/.dsh/.agent-presets 里的 epcd 会进名录并被默认选中）──
 # 注：composeProfile 会把 shipped 4 个 preset（standard/code/minimal/cordis）强制塞进 roots，
 # 该层无法用 patch 移除；所以「名录只剩 epcd」在框架层做不到，这里只保证 default=epcd（其余列出来但默认不选）。
