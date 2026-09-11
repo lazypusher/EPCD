@@ -271,9 +271,37 @@ function deleteConfig(cwd, name) {
   if (!cwd) return { ok: false, error: "无法定位当前项目目录（会话缺 cwd）" };
   const { active, configs } = readConfigs(cwd);
   if (!(name in configs)) return { ok: false, error: "配置不存在：" + name };
-  if (active === name) return { ok: false, error: "不能删除当前激活的配置" };
   delete configs[name];
-  return writeConfigs(cwd, active, configs);
+  // 允许删除当前激活的配置：删后 active 自动降级到剩余第一套（无剩余则置空）。
+  let nextActive = active;
+  if (active === name) {
+    const rest = Object.keys(configs);
+    nextActive = rest.length ? rest[0] : "";
+  }
+  return writeConfigs(cwd, nextActive, configs);
+}
+
+function renameConfig(cwd, oldName, newName) {
+  if (!cwd) return { ok: false, error: "无法定位当前项目目录（会话缺 cwd）" };
+  if (!oldName || typeof oldName !== "string" || !oldName.trim()) {
+    return { ok: false, error: "原配置名不能为空" };
+  }
+  if (!newName || typeof newName !== "string" || !newName.trim()) {
+    return { ok: false, error: "新配置名不能为空" };
+  }
+  oldName = oldName.trim();
+  newName = newName.trim();
+  const { active, configs } = readConfigs(cwd);
+  if (!(oldName in configs)) return { ok: false, error: "配置不存在：" + oldName };
+  if (oldName === newName) return { ok: false, error: "新配置名与原配置名相同" };
+  if (newName in configs) return { ok: false, error: "配置名已存在：" + newName };
+  // 保持插入顺序：遍历时把 oldName 换成 newName（新 key 出现在原位置）。
+  const out = {};
+  for (const k of Object.keys(configs)) {
+    out[k === oldName ? newName : k] = configs[k];
+  }
+  const nextActive = active === oldName ? newName : active;
+  return writeConfigs(cwd, nextActive, out);
 }
 
 function activateConfig(cwd, name) {
@@ -438,10 +466,11 @@ export function apply(ctx) {
 
   ctx.tools.register(defineTool({
     name: "epcd_config",
-    description: "读/写 EPCD 项目配置（epcd-configs.json：平铺 multi-config）。action=get 返回当前 active config + 配置列表；action=list 返回所有配置名；action=save 新建/修改某配置；action=delete 删除某配置；action=activate 切换 active。",
+    description: "读/写 EPCD 项目配置（epcd-configs.json：平铺 multi-config）。action=get 返回当前 active config + 配置列表；action=list 返回所有配置名；action=save 新建/修改某配置；action=delete 删除某配置（可删 active，删后自动切到剩余第一套或置空）；action=rename 重命名配置（active 跟随）；action=activate 切换 active。",
     parameters: {
-      action: { type: "string", required: true, enum: ["get", "list", "save", "delete", "activate"], description: "get/list/save/delete/activate" },
-      name: { type: "string", description: "配置名（save/delete/activate 必填）" },
+      action: { type: "string", required: true, enum: ["get", "list", "save", "delete", "rename", "activate"], description: "get/list/save/delete/rename/activate" },
+      name: { type: "string", description: "配置名（save/delete/rename/activate 必填；rename 时为原配置名）" },
+      newName: { type: "string", description: "action=rename 时的新配置名" },
       config: {
         type: "object",
         additionalProperties: true,
@@ -468,6 +497,10 @@ export function apply(ctx) {
         }
         case "delete": {
           const r = deleteConfig(cwd, args.name);
+          return { ...r, ...getEffective(cwd) };
+        }
+        case "rename": {
+          const r = renameConfig(cwd, args.name, args.newName);
           return { ...r, ...getEffective(cwd) };
         }
         case "activate": {
@@ -575,11 +608,14 @@ export function apply(ctx) {
                 case "delete":
                   r = deleteConfig(c2, parsed.name);
                   break;
+                case "rename":
+                  r = renameConfig(c2, parsed.name, parsed.newName);
+                  break;
                 case "activate":
                   r = activateConfig(c2, parsed.name);
                   break;
                 default:
-                  r = { ok: false, error: "unknown action (save|delete|activate)" };
+                  r = { ok: false, error: "unknown action (save|delete|rename|activate)" };
               }
               send(r.ok ? 200 : 400, { ...r, ...getEffective(c2) });
             } catch (e) {

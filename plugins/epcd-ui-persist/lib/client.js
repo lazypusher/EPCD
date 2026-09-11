@@ -436,10 +436,31 @@ window.__ModuleLoader__.load({
         post({ action: "activate", name: name2 });
       }
 
+      function removeAt(target) {
+        if (!target) return;
+        if (!window.confirm("删除配置 \"" + target + "\"？此操作不可撤销。")) return;
+        post({ action: "delete", name: target }).then(function (d) {
+          if (d && d.ok) setSaveMsg("已删除配置 " + target + (d.active ? "，当前配置切到 " + d.active : ""));
+          else if (d && d.error) setSaveMsg(d.error);
+        });
+      }
+
+      function renameAt(target) {
+        if (!target) return;
+        var nn = window.prompt("重命名配置 \"" + target + "\" 为：", target);
+        if (!nn) return;
+        nn = nn.trim();
+        if (!nn) return;
+        if (nn === target) { setSaveMsg("新名与原名相同"); return; }
+        post({ action: "rename", name: target, newName: nn }).then(function (d) {
+          if (d && d.ok) setSaveMsg("已重命名为 " + nn);
+          else if (d && d.error) setSaveMsg(d.error);
+        });
+      }
+
       function remove() {
-        if (!name) return;
-        if (!window.confirm("删除配置 \"" + name + "\"？此操作不可撤销。")) return;
-        post({ action: "delete", name: name });
+        // 兼容旧的「删除」入口：删除当前编辑器选中的配置（与 chip 上删除一致）。
+        removeAt(name);
       }
 
       function create() {
@@ -488,27 +509,44 @@ window.__ModuleLoader__.load({
       var labels = d.labels || {};
       var fields = d.fields || CFG_FIELDS;
 
-      // 配置选择/切换/新建/删除工具条
+      // 配置条目：名称（点击切换/激活）+ 重命名 + 删除，三者各自独立、删的是该条目本身而非隐式选中态
+      var itemBorder = "1px solid #e5e7eb";
       var selector = list.length
         ? list.map(function (k) {
             var isActive = k === (d.active || "");
-            return React.createElement("button", {
-              key: k,
+            var nameBtn = React.createElement("button", {
               onClick: function () { activate(k); },
+              title: "切换到此配置",
               style: {
-                fontSize: 12, padding: "5px 10px", margin: "0 6px 6px 0", cursor: "pointer",
-                border: isActive ? "1px solid #4c7ff0" : "1px solid #e5e7eb",
-                borderRadius: 8, background: isActive ? "#4c7ff0" : "#f5f6f8", color: isActive ? "#fff" : "#333"
+                fontSize: 12, padding: "5px 10px", cursor: "pointer", border: "none", background: "transparent",
+                color: isActive ? "#4c7ff0" : "#333", fontWeight: isActive ? 600 : 400
               }
             }, k);
+            var ico = { fontSize: 12, padding: "5px 6px", cursor: "pointer", border: "none", background: "transparent", lineHeight: 1 };
+            var renameBtn = React.createElement("button", {
+              onClick: function () { renameAt(k); },
+              title: "重命名此配置",
+              style: Object.assign({}, ico, { color: "#4c7ff0" })
+            }, "✎");
+            var delBtn = React.createElement("button", {
+              onClick: function () { removeAt(k); },
+              title: "删除此配置",
+              style: Object.assign({}, ico, { color: "#c0392b" })
+            }, "✕");
+            return React.createElement("span", {
+              key: k,
+              style: {
+                display: "inline-flex", alignItems: "center", margin: "0 6px 6px 0",
+                border: isActive ? "1px solid #4c7ff0" : itemBorder, borderRadius: 8, overflow: "hidden", background: "#f5f6f8"
+              }
+            }, nameBtn, renameBtn, delBtn);
           })
         : [React.createElement("span", { key: "none", style: { fontSize: 11, color: "#9aa3ad" } }, "暂无配置，请新建")];
 
       var toolbar = React.createElement("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", marginBottom: 14 } },
         React.createElement("span", { style: { fontSize: 12, fontWeight: 600, marginRight: 8 } }, "当前配置：" + (d.active || "（无）")),
         selector,
-        React.createElement("button", { onClick: create, style: btnStyle(false) }, "新建"),
-        React.createElement("button", { onClick: remove, style: btnStyle(true) }, "删除")
+        React.createElement("button", { onClick: create, style: btnStyle(false) }, "新建")
       );
 
       var fieldBlocks = fields.map(function (f) {
@@ -576,7 +614,7 @@ window.__ModuleLoader__.load({
         fieldBlocks,
         React.createElement("div", { style: { display: "flex", alignItems: "center", marginTop: 4 } }, saveBtn, statusNode),
         React.createElement("div", { style: { fontSize: 11, color: "#9aa3ad", marginTop: 10, lineHeight: 1.6 } },
-          "说明：一套配置包含连接（主机/端口/用户/密钥）、EPCD 包根、工艺文件与工作目录，切换即可整体生效；「保存修改」把当前字段写回所选配置，「新建」复制当前值另存为一份新配置。")
+          "说明：一套配置包含连接（主机/端口/用户/密钥）、EPCD 包根、工艺文件与工作目录。点击配置名切换生效；每套配置旁的 ✎ 重命名、✕ 删除（可删当前配置，删后自动切到剩余配置）；「保存修改」把字段写回当前选中配置，「新建」复制当前值另存一份。")
       );
     }
 
