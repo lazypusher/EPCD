@@ -145,10 +145,10 @@ sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schem
 
 ### 2. 目标与模板确认（执行前仅有的确认）
 
-- **用户给了具体 synth 目标**（如「2.4GHz、L≈10nH、Q>20、≤300µm」）→ **跳过目标确认**，直接确认模板。
-- **用户没给目标** → 先「逐项确认目标」，批准后再确认模板。
+- **用户给了具体/完整 synth 目标**（如「2.4GHz、L≈10nH、Q>20、≤300µm」）→ **跳过目标确认**，直接确认模板。
+- **用户没给（全部）目标** → 先「逐项确认缺失的目标」，批准后再确认模板。
 
-**逐项确认目标**（最小卡，只放目标）：每项一行 `L / Q / size / freq`；提取不到的项给 MVP
+**逐项确认缺失目标**（最小卡，只放缺失目标）：每项一行 `L / Q / size / freq`；提取不到的项给 MVP
 默认（2.4GHz、L=5nH、Q≥8、≤300µm）并标「默认代入」，可逐项改。
 
 **确认模板**（最小卡，只放模板）：按目标读 `references/inductor-templates-comparison.md`
@@ -190,6 +190,9 @@ sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schem
    `epcd_status` 刷新进度条**，让进度逐轮推进（0→1→…→20），**绝不让多轮攒成一次 epcd_status**。
    不要用 `job_output(wait=true)` 长时间阻塞等待整体结束——那会让进度条从 0 直接跳到收尾；
    `request_prefix` 默认已唯一，**不要复用同一前缀**。
+   ⚠️ **`optimization_status` 不传 `task_id`**（`input` 空对象 `{}`）：它自动查该 session 最近一个
+   running/pending 任务（否则最新一个）。`task_id` 是 `opt-{job行数+1}`、随每轮候选仿真漂移、且只
+   在 `optimization_start` 返回时才暴露——**绝不能靠猜或手填 task_id**，否则轮询会 `OPTIMIZATION_TASK_NOT_FOUND`。
 7. 读 best job `targetValues`，对照每条 objective 做差距表
 
 仅 `OPTIMIZATION_PAUSED`（读 `data.errors`/`category` 诊断）/ degraded 等**硬故障**才停下问用户。

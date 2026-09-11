@@ -286,6 +286,44 @@ class SessionStore:
             "SELECT * FROM optimization_task WHERE session_id = ? AND task_id = ?",
             (session_id, task_id),
         ).fetchone()
+        return self._optimization_row(row)
+
+    def list_optimizations(self, session_id: str) -> list[dict]:
+        """All optimization tasks for a session, oldest first."""
+        rows = self._conn.execute(
+            "SELECT * FROM optimization_task WHERE session_id = ? "
+            "ORDER BY CAST(substr(task_id, 5) AS INTEGER)",
+            (session_id,),
+        ).fetchall()
+        return [self._optimization_row(r) for r in rows]
+
+    def latest_optimization(self, session_id: str,
+                            *, prefer_running: bool = False) -> dict | None:
+        """Newest optimization task for a session.
+
+        ``prefer_running=True`` returns the newest *running/pending* task if one
+        exists, else falls back to the newest overall — so status polling can
+        find the in-flight task without knowing its ``task_id`` in advance
+        (``optimization_start`` blocks for the whole TPE loop and only exposes
+        ``task_id`` on return, so callers cannot obtain it up front).
+        """
+        order = "ORDER BY CAST(substr(task_id, 5) AS INTEGER) DESC"
+        if prefer_running:
+            row = self._conn.execute(
+                "SELECT * FROM optimization_task WHERE session_id = ? "
+                f"AND status IN ('pending', 'running') {order} LIMIT 1",
+                (session_id,),
+            ).fetchone()
+            if row is not None:
+                return self._optimization_row(row)
+        row = self._conn.execute(
+            "SELECT * FROM optimization_task WHERE session_id = ? "
+            f"{order} LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        return self._optimization_row(row)
+
+    def _optimization_row(self, row: sqlite3.Row | None) -> dict | None:
         if row is None:
             return None
         return {

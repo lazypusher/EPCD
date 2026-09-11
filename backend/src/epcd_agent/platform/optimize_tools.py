@@ -212,7 +212,14 @@ def optimization_start(ctx: ToolContext, *, parameter_schema: dict,
                                      "max_rounds": max_rounds})
 
 
-def optimization_status(ctx: ToolContext, task_id: str) -> ToolResult:
+def optimization_status(ctx: ToolContext, task_id: str | None = None) -> ToolResult:
+    if task_id is None:
+        task_id = _resolve_latest_task_id(ctx)
+        if task_id is None:
+            return ToolResult(ok=False,
+                              errors=({"code": "NO_OPTIMIZATION_TASK", "path": "/task_id",
+                                       "message": "no optimization task in this session; "
+                                                  "call optimization_start first or pass task_id"},))
     task = ctx.store.get_optimization(ctx.session_id, task_id)
     if task is None:
         return ToolResult(ok=False,
@@ -222,7 +229,14 @@ def optimization_status(ctx: ToolContext, task_id: str) -> ToolResult:
     return ToolResult(ok=True, data={**task, "cancel_requested": cancel_flag})
 
 
-def optimization_cancel(ctx: ToolContext, task_id: str) -> ToolResult:
+def optimization_cancel(ctx: ToolContext, task_id: str | None = None) -> ToolResult:
+    if task_id is None:
+        task_id = _resolve_latest_task_id(ctx)
+        if task_id is None:
+            return ToolResult(ok=False,
+                              errors=({"code": "NO_OPTIMIZATION_TASK", "path": "/task_id",
+                                       "message": "no optimization task in this session; "
+                                                  "call optimization_start first or pass task_id"},))
     task = ctx.store.get_optimization(ctx.session_id, task_id)
     if task is None:
         return ToolResult(ok=False,
@@ -230,3 +244,14 @@ def optimization_cancel(ctx: ToolContext, task_id: str) -> ToolResult:
                                    "message": f"unknown optimization task: {task_id}"},))
     ctx.store.set_state(ctx.session_id, _cancel_key(task_id), True)
     return ToolResult(ok=True, data={"task_id": task_id, "cancel_requested": True})
+
+
+def _resolve_latest_task_id(ctx: ToolContext) -> str | None:
+    """Resolve the task to poll/cancel when the caller supplies no task_id.
+
+    Prefer the in-flight (pending/running) task so progress polling works while
+    ``optimization_start`` is still blocked in its TPE loop; otherwise fall back
+    to the newest task overall.
+    """
+    task = ctx.store.latest_optimization(ctx.session_id, prefer_running=True)
+    return task["task_id"] if task else None

@@ -119,6 +119,13 @@ export function launchOptimization(
     try {
       const parsed = JSON.parse(out.trim());
       job.report = parsed.data?.report ?? parsed.data;
+      // 用子进程返回的「真实 task_id」回填，覆盖 spawn 前的预测值：
+      // task_id = opt-(job 行数+1) 会随每轮候选仿真增长，预测在并发/多轮下会漂移，
+      // 导致轮询/取消（getOptimizationSnapshot/requestCancel 都以 epcdTaskId 为键）定位错任务。
+      const realTaskId = parsed.data?.task_id;
+      if (typeof realTaskId === "string" && realTaskId !== job.epcdTaskId) {
+        job.epcdTaskId = realTaskId;
+      }
     } catch {
       job.report = undefined;
     }
@@ -176,8 +183,19 @@ export async function handleOptimizationPhase(
     return { advanced: false, task: getTaskForId(db, task.id) };
   }
 
-  const snap = getOptimizationSnapshot(db, task.session, epcdTaskId);
   const job = jobs.get(task.id);
+
+  // 自愈：spawn 前的预测 task_id 在并发/多轮下可能漂移，导致 snapshot 查不到。
+  // 子进程 close 时会把真实 task_id 回填到 job.epcdTaskId；这里优先用真实值重查并
+  // 回写 config，保证轮询/取消始终定位到实际入库的那条 optimization_task 记录。
+  let snap = getOptimizationSnapshot(db, task.session, epcdTaskId);
+  if (!snap && job && job.epcdTaskId && job.epcdTaskId !== epcdTaskId) {
+    const corrected = job.epcdTaskId;
+    snap = getOptimizationSnapshot(db, task.session, corrected);
+    if (snap) {
+      patchTaskConfig(db, task.id, { ...cfg, optimizationTaskId: corrected });
+    }
+  }
 
   if (snap?.status === "finished") {
     const report = job?.report ?? { best_job_id: snap.bestJobId, rounds: snap.rounds };
