@@ -12,3 +12,8 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# EPCD 设计运行产物（不入库）
+artifacts/
+deliverables/
+*.opt-input-*.json
