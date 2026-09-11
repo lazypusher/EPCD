@@ -15,7 +15,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 $DshHome  = Join-Path $env:USERPROFILE '.dsh'
 
 Write-Host "== EPCD 形态 A 部署 ==" -ForegroundColor Cyan
