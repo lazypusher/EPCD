@@ -10,6 +10,7 @@ import pathlib
 import shutil
 import subprocess
 
+from epcd_agent.paths import task_run_dir
 from epcd_agent.tools.base import ToolContext, ToolResult
 from epcd_agent.tools.read import epcd_job
 
@@ -59,6 +60,9 @@ def artifact_view(ctx: ToolContext, job_id: str, fetch_dir: str | None = None) -
     if not result.ok:
         return result
     cards = build_artifact_cards(result.data or {})
+    # 未显式指定时，产物统一落 `runs/<session>/artifacts`（与 cwd 解耦、按任务分目录）。
+    if fetch_dir is None:
+        fetch_dir = str(task_run_dir(ctx.session_id) / "artifacts")
     if fetch_dir:
         target_dir = pathlib.Path(fetch_dir)
         target_dir.mkdir(parents=True, exist_ok=True)

@@ -71,12 +71,10 @@ export function loadConfig(): EpcdConfig {
       process.platform === "win32" ? "Scripts/python.exe" : "bin/python"
     );
   const dbPath =
-    process.env.EPCD_DB ??
-    path.join(repoRoot, "platform", "server", "data", "epcd-platform.sqlite3");
+    process.env.EPCD_DB ?? path.join(repoRoot, "runs", "platform-server.sqlite3");
   const defaultServer = process.env.EPCD_SERVER ?? "epcd-primary";
   const artifactsDir =
-    process.env.EPCD_ARTIFACTS ??
-    path.join(repoRoot, "platform", "server", "data", "artifacts");
+    process.env.EPCD_ARTIFACTS ?? path.join(repoRoot, "runs");
   return {
     backendDir,
     python,

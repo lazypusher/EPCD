@@ -15,6 +15,7 @@ import os
 import sys
 
 from epcd_agent.cli_client import EpcdCli
+from epcd_agent.paths import default_db_path
 from epcd_agent.store import SessionStore
 from epcd_agent.tools.base import ToolContext, ToolInputError, ToolResult
 from epcd_agent.tools.read import epcd_health, epcd_template, epcd_formula, epcd_job
@@ -191,8 +192,7 @@ def _emit(ok: bool, data=None, error: dict | None = None) -> str:
 def main(argv: list[str], stdin_text: str, build_ctx=None,
          registry_override: dict | None = None) -> tuple[int, str]:
     parser = argparse.ArgumentParser(prog="epcd-agent-cli", add_help=True)
-    parser.add_argument("--db", default=os.environ.get(
-        "EPCD_AGENT_DB", "epcd-agent-session.sqlite3"))
+    parser.add_argument("--db", default=None)
     parser.add_argument("--session", default=os.environ.get("EPCD_AGENT_SESSION", "default"))
     parser.add_argument("--config-file", default=os.environ.get("EPCD_CONFIG_FILE"))
     parser.add_argument("tool", nargs="?", default=None)
@@ -200,6 +200,9 @@ def main(argv: list[str], stdin_text: str, build_ctx=None,
         args = parser.parse_args(argv)
     except SystemExit:
         return 2, _emit(False, error={"type": "USAGE", "message": "bad arguments"})
+    # DB 落统一 run 根（与 cwd 解耦）：未显式 --db 时用 env 覆盖或 <repo_root>/runs/。
+    if args.db is None:
+        args.db = os.environ.get("EPCD_AGENT_DB") or str(default_db_path())
     active_config, config_err = _load_configs(args.config_file)
     if config_err is not None:
         return 2, _emit(False, error={"type": "USAGE", "message": config_err})

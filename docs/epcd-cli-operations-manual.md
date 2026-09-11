@@ -332,5 +332,6 @@ epcd-cli job result --id a6b32523-e684-4ec2-9ac5-6d9b673826ae
 
 > 本地 wrapper 固定入口（Windows Git Bash）：
 > `MSYS_NO_PATHCONV=1 EPCD_SSH_HOST=zhubo@192.168.20.243 EPCD_PKG_ROOT=$PKG \
->   ./.venv/Scripts/python -m epcd_agent.cli --db epcd-agent-session.sqlite3 --session inductor <tool>`
+>   ./.venv/Scripts/python -m epcd_agent.cli --session inductor <tool>`
 > 参数 JSON 经 stdin 传入；stdout 单行 JSON；退出码 0/1/2。
+> （`--db` 可省略：默认落统一产物根 `<repo>/runs/epcd-agent-session.sqlite3`。）

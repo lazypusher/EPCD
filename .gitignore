@@ -13,7 +13,7 @@ dist/
 *.log
 .DS_Store
 
-# EPCD 设计运行产物（不入库）
-artifacts/
-deliverables/
+# EPCD 统一运行产物根（所有任务的中间/交付产物，不入库）
+# 结构：runs/epcd-agent-session.sqlite3（全局审计库）+ runs/<任务名>/artifacts|opt-input
+runs/
 *.opt-input-*.json

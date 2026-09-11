@@ -73,13 +73,13 @@ tests/               全部基于场景驱动的 mock epcd-cli（mock_cli.py）�
 | `optimization_start` | 启动 TPE 迭代优化任务（parameter_schema + 预算） |
 | `optimization_status` | 查询优化任务进度/报告 |
 | `optimization_cancel` | 跨进程请求取消优化任务 |
-| `artifact_view` | 取 job 产物卡片并按需拉取文件到 fetch_dir |
+| `artifact_view` | 取 job 产物卡片并按需拉取文件（未显式 fetch_dir 时落 `<repo>/runs/<session>/artifacts/`） |
 
 环境变量（均可被同名命令行参数覆盖）：
 
 | 变量 | 作用 | 默认值 |
 | --- | --- | --- |
-| `EPCD_AGENT_DB` | Session Store SQLite 路径 | `epcd-agent-session.sqlite3` |
+| `EPCD_AGENT_DB` | Session Store SQLite 路径 | `<repo>/runs/epcd-agent-session.sqlite3` |
 | `EPCD_AGENT_SESSION` | 会话名 | `default` |
 | `EPCD_SSH_HOST` | 远程主机（如 `zhubo@192.168.20.243`） | 无（本地模式） |
 | `EPCD_PKG_ROOT` | 远端 EPCD 包根（如 `/package/eda9cube-...`） | 无 |

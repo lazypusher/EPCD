@@ -62,8 +62,9 @@ description: EPCD 元器件设计 Agent 端到端全流程编排。用户自然�
 - **器件名**：从规格自动生成，如「2.4GHz 下 L≈5nH 电感」→ `ind-2p4g-5nh`（如 `workDirRoot` 下已存在该目录，主动加后缀）；提取不到时按`ind-001`、`ind-002`…全局递增。
 - **work_dir** = `<workDirRoot>/<器件名>`（`epcd_project init` 的 `work_dir`）。
 - **实例名** = `<器件名>-inst`（`epcd_device add` 的 `name`）。
-- **session / db**：`--session <器件名>`；`--db` 固定为 `epcd-agent-session.sqlite3`
-  （相对 `backend/` 工作目录，即 `<repo>/backend/epcd-agent-session.sqlite3`，单一事实源，审计+恢复）。
+- **session / db**：`--session <器件名>`；`--db` **不手工指定**——backend 自动落到统一产物根
+  `<repo>/runs/epcd-agent-session.sqlite3`（全局审计库，单一事实源，审计+恢复；与 cwd 解耦，绝不落在 `backend/`）。
+  本地产物统一落 `<repo>/runs/<器件名>/`：优化输入中间文件归 `runs/<器件名>/opt-input/`，交付产物归 `runs/<器件名>/artifacts/`。
 - 以上命名/路径**全自动生成、不进任何确认卡**；用户无需（也不应被要求）手动填或改。
 
 ## epcd_cli 调用范式（进程直调，Win11 / Linux 通用）
@@ -174,9 +175,10 @@ sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schem
    —— `optimization_start` 内部阻塞整轮 TPE（每轮 ~25s × 多轮），不能用同步 `epcd_cli`；
    改用**当前平台的 shell 工具 `run_in_background`**（Win11 用 pwsh、Linux 部署服务器用 bash，
    DSH 已按平台二选一，二者行为对称，不依赖 pwsh）。命令用 backend venv 的 python：
-   - Win11：`backend\.venv\Scripts\python.exe -m epcd_agent.cli --config-file <项目内epcd-configs.json绝对路径> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
-   - Linux：`backend/.venv/bin/python -m epcd_agent.cli --config-file <项目内epcd-configs.json绝对路径> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
+   - Win11：`backend\.venv\Scripts\python.exe -m epcd_agent.cli --config-file <项目内epcd-configs.json绝对路径> --session <器件名> optimization_start`
+   - Linux：`backend/.venv/bin/python -m epcd_agent.cli --config-file <项目内epcd-configs.json绝对路径> --session <器件名> optimization_start`
    + stdin 传 `{"parameter_schema":…,"initial_candidates":…,"max_rounds":…}`（工作目录 = `backend/`）。
+   ⚠️ **不传 `--db`**：backend 自动落统一根 `<repo>/runs/epcd-agent-session.sqlite3`，与 cwd 解耦。
    其余 11 个工具仍一律走 `epcd_cli`（`epcd_cli` 内部已按平台自动选 python、自动带 `--config-file`，无需区分）。
    ⚠️ 后台 bash 直跑 `python -m epcd_agent.cli` 走的是**本机 ssh 二进制**（非 dsh-ssh 工具）。
    ssh 连接已实现**平台无关 + 与本机 ssh config 路径解耦**：连接参数来自 active config 的平铺字段
@@ -209,8 +211,10 @@ resume_from=<上一 task_id>, max_rounds=<新增轮数>)`。`resume_from` 把上
 `request_id="final-<best-job-id>"`、`wait=true` 不传 timeout）。注意 `epcd_run` 的 `task` 白名单
 只有 `simulation-evaluation` / `gds-generation`，**没有 `final`**；「final」只是流程语义，落在
 `request_id` 前缀。验收：逐条 `targetValue == objectives`、`satisfied` 判达标、`parametersUsed` 含写回几何。
-交付：`artifact_view`/`ssh_download` 拉产物，`epcd_artifacts` 渲染图库——
-版图三视图（`preview_top`/`preview_iso`/`preview_side`，kind=`image`，label=俯视/轴测/侧视）+ S2P/GDS/目标值。
+交付：`artifact_view`（不传 `fetch_dir`，产物自动落 `<repo>/runs/<器件名>/artifacts/`）拉产物、
+`epcd_artifacts` 渲染图库——版图三视图（`preview_top`/`preview_iso`/`preview_side`，
+kind=`image`，label=俯视/轴测/侧视）+ S2P/GDS/目标值。**所有本地产物只在 `<repo>/runs/<器件名>/` 下，
+不得落到 `backend/` 或其它散落目录。**
 
 ## 硬规则
 
