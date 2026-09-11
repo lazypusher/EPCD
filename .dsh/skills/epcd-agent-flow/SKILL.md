@@ -172,6 +172,10 @@ sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schem
    `parameter_schema` 必须用模板 `describe()` 返回的 `parameterSchema`（优化边界只在这里；
    `config schema` 的 `device.parameters` 是默认值骨架、`addinParams` 是面板参数堆——都不是优化空间）；
    `initial_candidates` 1~2 组；`max_rounds` 按模板推荐。
+   ⚠️ `optimization_start` **顶层无 `template_id` 入参**：`{"template_id":…}` 会报
+   `unexpected keyword argument 'template_id'`；`template_id` 只能嵌在 `parameter_schema`
+   内部（且通常可省略，后端会从 active instance 兜底）。完整签名/传法见
+   `references/config-patch-templates.md` §6。
    —— `optimization_start` 内部阻塞整轮 TPE（每轮 ~25s × 多轮），不能用同步 `epcd_cli`；
    改用**当前平台的 shell 工具 `run_in_background`**（Win11 用 pwsh、Linux 部署服务器用 bash，
    DSH 已按平台二选一，二者行为对称，不依赖 pwsh）。命令用 backend venv 的 python：

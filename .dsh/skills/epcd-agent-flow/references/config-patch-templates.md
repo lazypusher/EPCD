@@ -158,13 +158,42 @@ apply-result → 再放宽。
 
 ## 6. optimization_start 的 parameter_schema
 
-**三种等价传法（按优先级，源码 `tools/read.py` + `platform/optimize_tools.py::_space_from_schema`）：**
+**`optimization_start` 顶层入参（源码 `optimize_tools.py::optimization_start` 签名，逐字对齐）：**
 
-1. **只传 `{"template_id":"<id>"}`（最简、推荐）** —— 内部自动 `describe()` 拿 `parameterSchema`。
-2. 直接传 describe 返回的完整 `parameterSchema`（嵌套 `basic`/`opt`/`synth`）。
-3. legacy 服务端无 parameterSchema 时，回退 `describe().addinParams`（面板参数堆，**非首选**）。
+```python
+optimization_start(ctx, *, parameter_schema: dict,        # 必填、keyword-only
+                   initial_candidates: Iterable[dict] = (),
+                   max_rounds: int | None = None,
+                   max_wall_seconds: float = 600.0,
+                   target_cost: float | None = None,
+                   startup_trials: int | None = None,
+                   request_prefix: str | None = None,
+                   resume_from: str | None = None)
+```
 
-`initial_candidates` 启 1~2 组、只填 opt 参数名。
+**⚠️ 顶层没有 `template_id` 参数。** 传 `{"template_id": …}` 会直接被映射成函数关键字，
+报 `TypeError: optimization_start() got an unexpected keyword argument 'template_id'`。
+`template_id` 只允许嵌在 `parameter_schema` 对象**内部**（可选 key），由
+`optimize_tools.py::_resolve_template_id` 读 `parameter_schema.get("template_id")`，
+用于模板 TPE 参数表查找与 `describe()` 回退；即使不嵌，也会从 session store 的
+active instance 兜底取到，所以通常不必显式嵌。
+
+**`parameter_schema` 的两种合法传法（按优先级）：**
+
+1. **完整 `parameterSchema`（推荐、最稳）** —— 直接传 `describe()` 返回的完整
+   `parameterSchema`（嵌套 `basic`/`opt`/`synth`；`opt` 组带优化边界
+   `minimum`/`maximum`/`multipleOf`，这是 TPE 优化空间的**唯一权威来源**）。
+   顶层 schema 对象里**不要**再塞 `template_id` 之外的顶层业务 key，以免污染合并。
+2. **`{"parameter_schema": {"template_id": "<id>"}}`** —— 只放 template_id，
+   `_space_from_schema` 拿到空 spec 后退回 `describe().parameterSchema` 再回退
+   `describe().addinParams`（legacy 面板参数堆，**非首选**）。此写法依赖步骤 2 兜底，
+   不如直接传完整 schema 确定。
+
+`initial_candidates` 启 1~2 组、只填 opt 参数名（trackWidth / numOfTurns / innerRadius…）。
+
+> 实测（0.1.0，2026-09）：早期 reference 声称「只传 `{"template_id":"<id>"}`（最简）」
+> 已失效——那会把 template_id 顶到 optimization_start 顶层而报错。正解是把它放进
+> `parameter_schema` 内部，或干脆传完整 parameterSchema（本 skill 当前采用后者）。
 
 > 优化空间参数名 = 模板 `describe().parameterSchema.properties.opt.properties` 的 key
 > （trackWidth / numOfTurns / innerRadius…），与 config 的 `device.parameters.opt` 的 key 一致。
