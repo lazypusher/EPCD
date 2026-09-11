@@ -48,53 +48,53 @@ New-Item -ItemType Directory -Force -Path $PresetDst | Out-Null
 Copy-Item (Join-Path $PresetSrc '*') $PresetDst -Force -Recurse
 Write-Host "  [2/4] agent preset -> $PresetDst"
 
-# ── 3. EPCD UI 插件：软链部署（单一事实源，幂等）────────────────────────────
-#     插件采用「单一事实源 + 软链」架构：canonical 在 plugins/epcd-ui-persist/lib/，
-#     而 profile 的 packages/epcd-ui-plugin/lib/ 与 node_modules/epcd-ui-plugin/lib/
-#     下的 index.js/client.js 都是软链指向 canonical，改 canonical 即刻生效、无需三处同步。
-#     package.json 不是软链，三处各持一份实体（内容一致），此处用 Copy-Item 同步。
-#     幂等：重复执行不覆盖已有软链、不产生 "same file" 警告、不破坏 pnpm 布局。
+# ── 3. EPCD UI 插件：复制部署（免管理员，幂等）──────────────────────────────
+#     插件 canonical 在 plugins/epcd-ui-persist/lib/，DSH 实际加载的两处
+#     packages/epcd-ui-plugin/lib/ 与 node_modules/epcd-ui-plugin/lib/ 都复制到位。
+#     说明：Windows 创建 SymbolicLink 需要管理员或开发者模式（普通用户报
+#     "需要管理员权限"）；这里改用 Copy-Item 覆盖 lib/*.js，与脚本其余复制步骤一致。
+#     改插件后重跑本脚本即可同步（三处 lib 一致）。
 $PluginSrc = Join-Path $RepoRoot 'plugins\epcd-ui-persist'
 $LibSrc    = Join-Path $PluginSrc 'lib'
-# 把 canonical 的 lib 文件以「软链」镜像到目标目录（幂等：已是正确软链则跳过，否则修正）。
-function Relink-EpcdLib {
+function Copy-EpcdLib {
     param([string]$Dst)
     New-Item -ItemType Directory -Force -Path (Join-Path $Dst 'lib') | Out-Null
     Get-ChildItem -Path $LibSrc -Filter '*.js' -File | ForEach-Object {
         $target = Join-Path $Dst ('lib\' + $_.Name)
-        if (Test-Path $target) {
-            $item = Get-Item $target
-            $isRightLink = $item.LinkType -eq 'SymbolicLink' -and ($item.Target -eq $_.FullName)
-            if (-not $isRightLink) { Remove-Item $target -Force -Recurse -ErrorAction SilentlyContinue }
-            else { return }
-        }
-        New-Item -ItemType SymbolicLink -Path $target -Target $_.FullName | Out-Null
+        # 目标若是旧软链/硬链/实体，一律先删再复制成全新实体，保证内容与 canonical 一致
+        Remove-Item $target -Force -Recurse -ErrorAction SilentlyContinue
+        Copy-Item $_.FullName $target -Force
     }
 }
-# 两处 DSH 实际加载的位置都镜像为软链（packages = pnpm file: 依赖源，node_modules = 解析落点）
-Relink-EpcdLib (Join-Path $ProfileDst 'packages\epcd-ui-plugin')
-Relink-EpcdLib (Join-Path $ProfileDst 'node_modules\epcd-ui-plugin')
+# 两处 DSH 实际加载的位置都复制到位（packages = pnpm file: 依赖源，node_modules = 解析落点）
+Copy-EpcdLib (Join-Path $ProfileDst 'packages\epcd-ui-plugin')
+Copy-EpcdLib (Join-Path $ProfileDst 'node_modules\epcd-ui-plugin')
 # package.json 三处实体同步（canonical → packages → node_modules），内容一致
 Copy-Item (Join-Path $PluginSrc 'package.json') (Join-Path $ProfileDst 'packages\epcd-ui-plugin\package.json') -Force
 Copy-Item (Join-Path $PluginSrc 'package.json') (Join-Path $ProfileDst 'node_modules\epcd-ui-plugin\package.json') -Force
-Write-Host "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（lib 软链 + package.json 三处实体同步）"
+Write-Host "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（lib 复制 + package.json 三处同步）"
 
-# ── 3.5 补 @deepseek-ai/dsh-tools 软链（修复 ERR_MODULE_NOT_FOUND）──────────
+# ── 3.5 补 @deepseek-ai/dsh-tools junction（修复 ERR_MODULE_NOT_FOUND）───────
 #     epcd-ui-plugin 的 lib/index.js `import { defineTool } from "@deepseek-ai/dsh-tools"`，
-#     而 dsh-tools 只声明为 peerDependency。DSH 模块 fallback 因「该包已存在于 dsh 本体依赖树」
-#     而跳过把它软链进 profile 专属 node_modules，导致插件 import 时解析不到。
-#     插件 lib 是软链（realpath 落到仓库 canonical），Node 从仓库根路径向上查 node_modules，
-#     故只需在仓库根 node_modules 建这一处软链。目标指向 DSH 维护的共享层（随 DSH 版本自动更新）。
+#     而 dsh-tools 只声明为 peerDependency，DSH 模块 fallback 不把它放进 profile node_modules。
+#     这里在仓库根 node_modules 建一个「目录 junction」指向 DSH 共享层：
+#     目录 junction 无需管理员（symbolic link 才需要），效果等同软链且随 DSH 版本自动更新。
 $SharedDep = Join-Path $DshHome 'profiles\node_modules\@deepseek-ai\dsh-tools'
 if (Test-Path $SharedDep) {
     $RepoLink = Join-Path $RepoRoot 'node_modules\@deepseek-ai'
     New-Item -ItemType Directory -Force -Path $RepoLink | Out-Null
     $RepoLinkTarget = Join-Path $RepoLink 'dsh-tools'
-    if (Test-Path $RepoLinkTarget) { Remove-Item $RepoLinkTarget -Force -Recurse -ErrorAction SilentlyContinue }
-    New-Item -ItemType SymbolicLink -Path $RepoLinkTarget -Target $SharedDep | Out-Null
-    Write-Host "  [3.5/4] @deepseek-ai/dsh-tools 软链 -> 共享层（仓库根 node_modules）"
+    # 幂等且安全：已是正确 junction 则跳过；旧的 symlink/残留用 rmdir 只删链接本身（不跟进删共享层内容）
+    $existing = Get-Item $RepoLinkTarget -ErrorAction SilentlyContinue
+    if ($existing -and $existing.LinkType -ne 'Junction') {
+        cmd /c rmdir "`"$RepoLinkTarget`"" 2>$null | Out-Null
+    }
+    if (-not (Test-Path $RepoLinkTarget)) {
+        New-Item -ItemType Junction -Path $RepoLinkTarget -Target $SharedDep | Out-Null
+    }
+    Write-Host "  [3.5/4] @deepseek-ai/dsh-tools junction -> 共享层（仓库根 node_modules）"
 } else {
-    Write-Warning "  [3.5/4] 共享层未找到 $SharedDep，跳过软链；若启动仍报 dsh-tools，请先完整安装 dsh。"
+    Write-Warning "  [3.5/4] 共享层未找到 $SharedDep，跳过；若启动仍报 dsh-tools，请先完整安装 dsh。"
 }
 
 # ── 4. 树外依赖（dsh-ssh，经 dsh plugin 转发 pnpm）────────────────────────
