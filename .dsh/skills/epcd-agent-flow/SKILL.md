@@ -1,6 +1,6 @@
 ---
 name: epcd-agent-flow
-description: EPCD 元器件设计 Agent 端到端全流程编排。用户自然语言发起器件设计（"帮我设计一个 2.4GHz 下 L≈10nH、Q>20 的电感"）时使用。只确认两件主观决策：synth 目标（仅当用户没给具体指标时，逐项）与模板（推荐）；命名/路径/仿真配置/TPE 参数全自动，并一路执行到全部仿真结果，再按结果确认写回/优化方案与最终仿真。服务器与工艺读项目配置（`<cwd>/epcd-config.json`，缺字段回落默认值）。核心流程走 epcd_agent 确定性后端（epcd_cli 直调），运维/传输走 dsh-ssh 工具。
+description: EPCD 元器件设计 Agent 端到端全流程编排。用户自然语言发起器件设计（"帮我设计一个 2.4GHz 下 L≈10nH、Q>20 的电感"）时使用。只确认两件主观决策：synth 目标（仅当用户没给具体指标时，逐项）与模板（推荐）；命名/路径/仿真配置/TPE 参数全自动，并一路执行到全部仿真结果，再按结果确认写回/优化方案与最终仿真。服务器连接/工艺/工作目录统一读项目内 `epcd-configs.json`（平铺 multi-config，active 一键切换）。核心流程走 epcd_agent 确定性后端（epcd_cli 直调 --config-file），运维/传输走 dsh-ssh 工具。
 ---
 
 # EPCD Agent Flow
@@ -15,42 +15,51 @@ description: EPCD 元器件设计 Agent 端到端全流程编排。用户自然�
 用户一开口就直奔第一步，**在健康检查之前禁止任何仓库探索与提前提问**。这直接决定
 「输入 → 首步」的延迟，也是本 skill 的第一条纪律：
 
-1. **读项目配置**（一次工具 `epcd_config`，`action=get`）：从返回的 `effective` 取
-   `ssh`/`pkg`/`technology`/`workDirRoot`（= 项目配置 `<cwd>/epcd-config.json` 覆盖默认值）。
-   关键字段缺失时，用**一次** `ask_user_question` 把缺失字段问齐并 `epcd_config`（`action=set`）写回
-   （这是健康检查前唯一允许的提问）。
+1. **读项目配置**（一次工具 `epcd_config`，`action=get`）：从返回的 `activeConfig` 取
+   `host`/`port`/`user`/`identityFile`/`pkg`/`technology`/`workDirRoot`（= 项目内
+   `<cwd>/epcd-configs.json` 的 active config，平铺字段）。
+   关键字段缺失时，用**一次** `ask_user_question` 把缺失字段问齐并 `epcd_config`
+   （`action=save`）写回（这是健康检查前唯一允许的提问）。
 2. **立刻跑健康检查**（一次 `epcd_cli` 的 `epcd_health`，见下），`data.status=="degraded"` 时解释原因并停。
 3. 健康检查通过后，才按需读 `references/inductor-templates-comparison.md` 或
    `epcd_template list/describe`（它们服务于模板/目标确认，不是第一步）。
 
-**禁止在健康检查前做这些事**（都会白白拖慢首步、且已有实数教训）：
+**禁止在健康检查前做这些事**：
 
 - `glob` 仓库 / 读 `backend/README.md`、`cli.py`、`store.py` —— 这些不影响第一步；
 - 提前问设计规格/目标 —— 目标确认在健康检查之后、且只在用户没给具体指标时才问；
 - 先读模板对比表 / 先看 schema —— 那是模板/目标确认阶段的事。
 
-## 项目配置（默认值 + 项目覆盖）
+## 项目配置（`epcd-configs.json`：平铺 multi-config）
 
-**默认值**是本 profile 的基线（`~/.dsh/profiles/epcd/data/epcd-config-defaults.json`）；
-**项目配置**是每项目一份的 `<cwd>/epcd-config.json`，只覆盖有改动的字段，缺字段回落到默认值。
-**有效值（effective）= 默认值 ← 项目配置逐字段覆盖**。一律用 effective，绝不硬编码。
+单一事实源 = 项目内 `<cwd>/epcd-configs.json`，结构：
+
+```json
+{ "active": "zhubo-prod",
+  "configs": { "zhubo-prod": { "host": "...", "port": 22, "user": "...",
+    "identityFile": "~/.ssh/id_rsa_epcdB", "pkg": "/package/...",
+    "technology": "...", "workDirRoot": "..." } } }
+```
 
 | 字段 | 含义 |
 | --- | --- |
-| `ssh` | SSH 服务器别名（`~/.ssh/config` 的 Host，含 HostName/User/IdentityFile；也支持直接 host） |
+| `host` | 服务器地址 |
+| `port` | SSH 端口 |
+| `user` | SSH 用户名 |
+| `identityFile` | 私钥路径（`~` 由后端跨平台展开） |
 | `pkg` | EPCD 包根（远端绝对路径） |
 | `technology` | 工艺文件（远端绝对路径，如 `demo_revised.ptxt`） |
 | `workDirRoot` | 器件工作目录根（远端，`/…/epcd-runs`） |
 
-- **读取**：`epcd_config`（`action=get`）拿 `effective`；若该工具缺失，才 `read` 上述两个文件合并。
-- **用户可在左侧侧边栏「EPCD 配置」入口（SSH 下方）直接改**（编辑 + 历史路径一键切换；留空=用默认值），改完从快速启动重跑。
-- **用户说「换服务器 / 换工艺 / 连另一台服务器」** → 用 `epcd_config`（`action=set`）写对应字段，或提示去「EPCD 配置」tab 改。
-- `servers.json` 仍是服务器池（`别名 → {ssh, pkg}`），项目配置的 `ssh`/`pkg` 为默认目标，二者一致即可。
+- **一套 config = 一组平铺属性**（连接 + pkg + 工艺 + 工作目录），可增删改；`active` 指向当前生效的 config。
+- **读取**：`epcd_config`（`action=get`）拿 `activeConfig`；`action=list` 拿全部 config 名。
+- **一键切换**：`epcd_config action=activate name=<config>`（或面板「EPCD 配置」tab 点选）。
+- **面板 `[EPCD 配置]` tab**：配置下拉 + 新建/修改/删除/切换，操作同一份文件。
+- backend 通过 `--config-file <项目内 epcd-configs.json 绝对路径>` 读 active config（`epcd_cli` 工具自动带上）。
 
 ## 自动命名（器件名/路径/实例名，全自动）
 
-- **器件名**：从规格自动生成，如「2.4GHz 下 L≈5nH 电感」→ `ind-2p4g-5nh`；提取不到时按
-  `ind-001`、`ind-002`…全局递增（依据 `workDirRoot` 下已有目录）。
+- **器件名**：从规格自动生成，如「2.4GHz 下 L≈5nH 电感」→ `ind-2p4g-5nh`（如 `workDirRoot` 下已存在该目录，主动加后缀）；提取不到时按`ind-001`、`ind-002`…全局递增。
 - **work_dir** = `<workDirRoot>/<器件名>`（`epcd_project init` 的 `work_dir`）。
 - **实例名** = `<器件名>-inst`（`epcd_device add` 的 `name`）。
 - **session / db**：`--session <器件名>`；`--db` 固定为 `epcd-agent-session.sqlite3`
@@ -64,28 +73,28 @@ description: EPCD 元器件设计 Agent 端到端全流程编排。用户自然�
 `.venv/Scripts/python.exe` 或 `.venv/bin/python`，`spawn` 直调、无 shell）。
 
 工具入参：`tool`（12 个后端工具名之一）、`input`（stdin 传给该工具的一个 JSON 对象）、
-`server`（`backend/servers.json` 的别名，可选，省略用默认）、`session`（可选，省略用 default）。
-`--db` 由工具固定落在 backend 工作目录（`epcd-agent-session.sqlite3`，相对 backend）。
+`session`（可选，省略用 default）。**连接参数不再走 `server`**：`epcd_cli` 工具自动读项目内
+`epcd-configs.json`（active config）并加 `--config-file` 传给后端。
 
-健康检查（`tool="epcd_health"`，`input` 空对象，`server=<项目配置ssh>`，`session="probe"`）：
+健康检查（`tool="epcd_health"`，`input` 空对象，`session="probe"`）：
 
 ```text
-epcd_cli { tool: "epcd_health", input: {}, server: "<项目配置ssh>", session: "probe" }
+epcd_cli { tool: "epcd_health", input: {}, session: "probe" }
 ```
 
-普通工具（`input` 传字典给工具函数）：
+普通工具（`input` 传字典给工具函数；`technology` 由后端从 active config 自动带出，**无需传**）：
 
 ```text
 epcd_cli {
   tool: "epcd_project",
-  input: { action: "init", work_dir: "<自动生成的work_dir>", technology: "<项目配置technology>" },
-  server: "<项目配置ssh>",
+  input: { action: "init", work_dir: "<自动生成的work_dir>" },
   session: "<器件名>"
 }
 ```
 
-> `server` 从 `backend/servers.json` 读 `{ssh, pkg}`；等价显式写法是
-> `input.ssh` + `input.pkg`（极少用）。`server` 未命中 / `servers.json` 缺别名 / 文件缺失 → 退出码 2。
+> `work_dir` = `<workDirRoot>/<器件名>`（skill 用 active config 的 `workDirRoot` + 器件名拼好）；
+> `technology` 由后端从 active config 自动带出（`ToolContext.technology`）。
+> 后端只认 `--config-file <项目内 epcd-configs.json 绝对路径>`；未传 / 文件缺失 → 退出码 2。
 
 12 个后端工具（`tool` 取值）：`epcd_health` / `epcd_template` / `epcd_project` /
 `epcd_device` / `epcd_config` / `epcd_formula` / `epcd_run` / `epcd_job` /
@@ -165,10 +174,15 @@ sweep 按目标自动推导、`frequencyMode`）；TPE 参数（`parameter_schem
    —— `optimization_start` 内部阻塞整轮 TPE（每轮 ~25s × 多轮），不能用同步 `epcd_cli`；
    改用**当前平台的 shell 工具 `run_in_background`**（Win11 用 pwsh、Linux 部署服务器用 bash，
    DSH 已按平台二选一，二者行为对称，不依赖 pwsh）。命令用 backend venv 的 python：
-   - Win11：`backend\.venv\Scripts\python.exe -m epcd_agent.cli --server <ssh> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
-   - Linux：`backend/.venv/bin/python -m epcd_agent.cli --server <ssh> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
+   - Win11：`backend\.venv\Scripts\python.exe -m epcd_agent.cli --config-file <项目内epcd-configs.json绝对路径> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
+   - Linux：`backend/.venv/bin/python -m epcd_agent.cli --config-file <项目内epcd-configs.json绝对路径> --db epcd-agent-session.sqlite3 --session <器件名> optimization_start`
    + stdin 传 `{"parameter_schema":…,"initial_candidates":…,"max_rounds":…}`（工作目录 = `backend/`）。
-   其余 11 个工具仍一律走 `epcd_cli`（`epcd_cli` 内部已按平台自动选 python，无需区分）。
+   其余 11 个工具仍一律走 `epcd_cli`（`epcd_cli` 内部已按平台自动选 python、自动带 `--config-file`，无需区分）。
+   ⚠️ 后台 bash 直跑 `python -m epcd_agent.cli` 走的是**本机 ssh 二进制**（非 dsh-ssh 工具）。
+   ssh 连接已实现**平台无关 + 与本机 ssh config 路径解耦**：连接参数来自 active config 的平铺字段
+   `host/port/user/identityFile`（backend 用 `-F <temp空config> -o HostName=… -o User=… -i …` 连接，
+   不读本机/系统 ssh config）。若仍报 `ENVELOPE_PARSE_ERROR: empty stdout`，
+   见 `references/ssh-troubleshooting.md`。
 6. **紧轮询** `optimization_status`（读 SQLite）：`optimization_start` 是后台任务、内部**逐轮**写库
    （每轮 `_record_round` 落 `rounds`/`consumed.rounds`）；因此**每读到 `done_rounds` 增加一轮，就立刻调一次
    `epcd_status` 刷新进度条**，让进度逐轮推进（0→1→…→20），**绝不让多轮攒成一次 epcd_status**。
@@ -217,4 +231,7 @@ resume_from=<上一 task_id>, max_rounds=<新增轮数>)`。`resume_from` 把上
 - `epcd_run` 最终仿真（`task="simulation-evaluation"`）：`wait=true` 时**不要**传 `timeout_seconds`（服务端 `TIMEOUT_WITH_WAIT`；
   timeout 仅异步提交 wait=false 可用）。
 - 追加轮次用 `resume_from` 续优，**不从头重跑**；`request_prefix` 默认已唯一，别复用。
+- 后台 bash 直跑 backend 若报 `ENVELOPE_PARSE_ERROR: empty stdout`，先按
+  `references/ssh-troubleshooting.md` 查本机 ssh 环境（temp 目录可写性 / identityFile 存在性），
+  不要改 backend 逻辑或反复重试——那不是流程 bug 就是环境 bug，二者定位路径不同。
 - 同一调用自纠上限 2 次；退出码语义见 release §2/§10。

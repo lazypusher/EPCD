@@ -28,13 +28,14 @@ export const inject = ["tools", "webServer", "agents"];
 const dshHome = process.env.DSH_HOME || join(homedir(), ".dsh");
 const dataDir = join(dshHome, "profiles", "epcd", "data");
 const galleryDir = join(dataDir, "gallery");
-const defaultsPath = join(dataDir, "epcd-config-defaults.json");
 const cachePath = join(dataDir, "epcd-config-cache.json");
-const legacyPath = join(dshHome, "epcd-config.json");
 
-const CONFIG_FIELDS = ["ssh", "pkg", "technology", "workDirRoot"];
+const CONFIG_FIELDS = ["host", "port", "user", "identityFile", "pkg", "technology", "workDirRoot"];
 const CONFIG_LABELS = {
-  ssh: "SSH 别名",
+  host: "主机地址",
+  port: "SSH 端口",
+  user: "用户名",
+  identityFile: "密钥文件",
   pkg: "EPCD 包根",
   technology: "工艺文件",
   workDirRoot: "工作目录根"
@@ -72,11 +73,14 @@ function resolvePython(backendDir) {
 // 后台任务用的超时（秒）；optimization_start 会阻塞整轮 TPE，需更长。
 const EPCD_CLI_TIMEOUT_MS = Number(process.env.EPCD_CLI_TIMEOUT_MS) || 600000;
 
-function runEpcdCli({ tool, input, server, session }) {
+function runEpcdCli({ tool, input, cwd, session }) {
   const backendDir = resolveBackendDir();
   const python = resolvePython(backendDir);
   const args = ["-m", "epcd_agent.cli"];
-  if (server) args.push("--server", server);
+  // 一刀切：后端只认 --config-file（项目内 epcd-configs.json 的绝对路径）。
+  const configFile = process.env.EPCD_CONFIG_FILE
+    || (cwd ? join(cwd, "epcd-configs.json") : null);
+  if (configFile) args.push("--config-file", configFile);
   if (session) args.push("--session", session);
   args.push(tool);
 
@@ -177,25 +181,9 @@ function cwdOfAgent(agent) {
   }
 }
 
-// ── config model ───────────────────────────────────────────────────────────
-
-function readDefaults() {
-  const d = readJson(defaultsPath, null);
-  if (d && typeof d === "object") {
-    const out = {};
-    for (const f of CONFIG_FIELDS) out[f] = typeof d[f] === "string" ? d[f] : "";
-    return out;
-  }
-  // First run: migrate the legacy ~/.dsh/epcd-config.json into the baseline.
-  const legacy = readJson(legacyPath, null);
-  const out = {};
-  for (const f of CONFIG_FIELDS) out[f] = legacy && typeof legacy[f] === "string" ? legacy[f] : "";
-  if (legacy && typeof legacy === "object") {
-    writeJson(defaultsPath, out);
-    updateCache(out);
-  }
-  return out;
-}
+// ── config model（epcd-configs.json：平铺 multi-config）────────────────────
+// 结构：{ "active": "<name>", "configs": { "<name>": {host,port,user,
+//        identityFile,pkg,technology,workDirRoot}, ... } }
 
 function readCache() {
   const c = readJson(cachePath, null);
@@ -223,44 +211,89 @@ function updateCache(config) {
   return cache;
 }
 
-function projectConfigPath(cwd) {
-  return join(cwd, "epcd-config.json");
+function configsPath(cwd) {
+  return join(cwd, "epcd-configs.json");
 }
 
-function readProject(cwd) {
-  if (!cwd) return {};
-  const d = readJson(projectConfigPath(cwd), null);
-  const out = {};
-  if (d && typeof d === "object") {
-    for (const f of CONFIG_FIELDS) {
-      if (typeof d[f] === "string" && d[f].trim()) out[f] = d[f].trim();
-    }
+function readConfigs(cwd) {
+  if (!cwd) return { active: null, configs: {} };
+  const d = readJson(configsPath(cwd), null);
+  if (!d || typeof d !== "object") return { active: null, configs: {} };
+  return {
+    active: typeof d.active === "string" ? d.active : null,
+    configs: d.configs && typeof d.configs === "object" ? d.configs : {},
+  };
+}
+
+function writeConfigs(cwd, active, configs) {
+  if (!cwd) return { ok: false, error: "无法定位当前项目目录（会话缺 cwd）" };
+  if (!writeJson(configsPath(cwd), { active, configs })) {
+    return { ok: false, error: "写入 " + configsPath(cwd) + " 失败" };
   }
+  return { ok: true };
+}
+
+function getActiveConfig(cwd) {
+  const { active, configs } = readConfigs(cwd);
+  const cfg = active && configs[active];
+  return cfg && typeof cfg === "object" ? cfg : {};
+}
+
+function listConfigs(cwd) {
+  return Object.keys(readConfigs(cwd).configs);
+}
+
+function saveConfig(cwd, name, fields) {
+  if (!cwd) return { ok: false, error: "无法定位当前项目目录（会话缺 cwd）" };
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return { ok: false, error: "配置名不能为空" };
+  }
+  name = name.trim();
+  const { active, configs } = readConfigs(cwd);
+  const cur = configs[name] && typeof configs[name] === "object" ? configs[name] : {};
+  const next = {};
+  for (const f of CONFIG_FIELDS) {
+    const raw = fields && fields[f];
+    // string 字段去首尾空白；number 字段（port）按原样保留（后端 port 支持 str | int）。
+    const v = typeof raw === "string" ? raw.trim() : (typeof raw === "number" && Number.isFinite(raw) ? raw : "");
+    if (v !== "" && v !== undefined && v !== null) next[f] = v;
+    else if (cur[f] !== undefined && cur[f] !== null) next[f] = cur[f];
+  }
+  configs[name] = next;
+  const out = writeConfigs(cwd, active || name, configs);
+  if (out.ok) updateCache(next);
   return out;
 }
 
-function getEffective(cwd) {
-  const defaults = readDefaults();
-  const project = readProject(cwd);
-  const effective = {};
-  for (const f of CONFIG_FIELDS) effective[f] = project[f] || defaults[f] || "";
-  const cache = readCache();
-  return { cwd: cwd || null, defaults, project, effective, cache, labels: CONFIG_LABELS, fields: CONFIG_FIELDS };
+function deleteConfig(cwd, name) {
+  if (!cwd) return { ok: false, error: "无法定位当前项目目录（会话缺 cwd）" };
+  const { active, configs } = readConfigs(cwd);
+  if (!(name in configs)) return { ok: false, error: "配置不存在：" + name };
+  if (active === name) return { ok: false, error: "不能删除当前激活的配置" };
+  delete configs[name];
+  return writeConfigs(cwd, active, configs);
 }
 
-function writeProject(cwd, config) {
+function activateConfig(cwd, name) {
   if (!cwd) return { ok: false, error: "无法定位当前项目目录（会话缺 cwd）" };
-  try {
-    const proj = readProject(cwd);
-    for (const f of CONFIG_FIELDS) {
-      if (config && typeof config[f] === "string" && config[f].trim()) proj[f] = config[f].trim();
-    }
-    writeJson(projectConfigPath(cwd), proj);
-    updateCache(proj);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: String((e && e.message) || e) };
-  }
+  const { configs } = readConfigs(cwd);
+  if (!(name in configs)) return { ok: false, error: "配置不存在：" + name };
+  return writeConfigs(cwd, name, configs);
+}
+
+function getEffective(cwd) {
+  const { active, configs } = readConfigs(cwd);
+  const cache = readCache();
+  return {
+    cwd: cwd || null,
+    active,
+    configs,
+    list: Object.keys(configs),
+    activeConfig: active && configs[active] ? configs[active] : {},
+    cache,
+    labels: CONFIG_LABELS,
+    fields: CONFIG_FIELDS,
+  };
 }
 
 // ── artifacts ──────────────────────────────────────────────────────────────
@@ -403,15 +436,19 @@ export function apply(ctx) {
 
   ctx.tools.register(defineTool({
     name: "epcd_config",
-    description: "读/写 EPCD 项目配置（ssh/pkg/technology/workDirRoot）。action=get 返回 effective 配置（项目配置覆盖默认值）+ 默认值 + 路径历史缓存；action=set 把给定字段写入当前项目配置并更新缓存。",
+    description: "读/写 EPCD 项目配置（epcd-configs.json：平铺 multi-config）。action=get 返回当前 active config + 配置列表；action=list 返回所有配置名；action=save 新建/修改某配置；action=delete 删除某配置；action=activate 切换 active。",
     parameters: {
-      action: { type: "string", required: true, enum: ["get", "set"], description: "get 读 / set 写" },
+      action: { type: "string", required: true, enum: ["get", "list", "save", "delete", "activate"], description: "get/list/save/delete/activate" },
+      name: { type: "string", description: "配置名（save/delete/activate 必填）" },
       config: {
         type: "object",
         additionalProperties: true,
-        description: "action=set 时写入的字段（只写非空字段）",
+        description: "action=save 时写入的字段（host/port/user/identityFile/pkg/technology/workDirRoot）",
         properties: {
-          ssh: { type: "string" },
+          host: { type: "string" },
+          port: { oneOf: [{ type: "string" }, { type: "number" }] },
+          user: { type: "string" },
+          identityFile: { type: "string" },
           pkg: { type: "string" },
           technology: { type: "string" },
           workDirRoot: { type: "string" }
@@ -420,11 +457,24 @@ export function apply(ctx) {
     },
     execute: async (args, exec) => {
       const cwd = cwdOfAgent(exec && exec.agent);
-      if (args.action === "set") {
-        const r = writeProject(cwd, args.config || {});
-        return { ...r, ...getEffective(cwd), written: r.ok };
+      switch (args.action) {
+        case "list":
+          return { cwd, list: listConfigs(cwd) };
+        case "save": {
+          const r = saveConfig(cwd, args.name, args.config || {});
+          return { ...r, ...getEffective(cwd) };
+        }
+        case "delete": {
+          const r = deleteConfig(cwd, args.name);
+          return { ...r, ...getEffective(cwd) };
+        }
+        case "activate": {
+          const r = activateConfig(cwd, args.name);
+          return { ...r, ...getEffective(cwd) };
+        }
+        default:
+          return { ...getEffective(cwd), present: Boolean(cwd) };
       }
-      return { ...getEffective(cwd), present: Boolean(cwd) };
     },
     output: {
       schema: { type: "object", additionalProperties: true },
@@ -448,19 +498,15 @@ export function apply(ctx) {
         additionalProperties: true,
         description: "传给后端工具的参数字典（stdin JSON）"
       },
-      server: {
-        type: "string",
-        description: "服务器别名（servers.json 的 key；可选，省略用默认）"
-      },
       session: {
         type: "string",
         description: "会话名（可选，省略用 default）"
       }
     },
-    execute: async (args) => runEpcdCli({
+    execute: async (args, exec) => runEpcdCli({
       tool: args.tool,
       input: args.input ?? {},
-      server: args.server ?? null,
+      cwd: cwdOfAgent(exec && exec.agent),
       session: args.session ?? null,
     }),
     output: {
@@ -519,7 +565,20 @@ export function apply(ctx) {
               const s = parsed.session ? safeSessionId(parsed.session) : sessionId;
               const a2 = ctx.agents ? ctx.agents.get(s) : undefined;
               const c2 = cwdOfAgent(a2) || parsed.cwd || cwd;
-              const r = writeProject(c2, parsed.config || {});
+              let r;
+              switch (parsed.action) {
+                case "save":
+                  r = saveConfig(c2, parsed.name, parsed.config || {});
+                  break;
+                case "delete":
+                  r = deleteConfig(c2, parsed.name);
+                  break;
+                case "activate":
+                  r = activateConfig(c2, parsed.name);
+                  break;
+                default:
+                  r = { ok: false, error: "unknown action (save|delete|activate)" };
+              }
               send(r.ok ? 200 : 400, { ...r, ...getEffective(c2) });
             } catch (e) {
               send(500, { ok: false, error: String((e && e.message) || e) });
@@ -527,7 +586,12 @@ export function apply(ctx) {
           });
           return;
         }
-        send(200, getEffective(cwd));
+        // GET：支持 ?action=list 只回配置名列表；否则返回完整 effective。
+        if (url.searchParams.get("action") === "list") {
+          send(200, { ok: true, cwd, list: listConfigs(cwd) });
+        } else {
+          send(200, getEffective(cwd));
+        }
       } catch (e) {
         send(500, { ok: false, error: String((e && e.message) || e) });
       }

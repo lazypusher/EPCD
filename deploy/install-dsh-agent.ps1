@@ -48,45 +48,88 @@ New-Item -ItemType Directory -Force -Path $PresetDst | Out-Null
 Copy-Item (Join-Path $PresetSrc '*') $PresetDst -Force -Recurse
 Write-Host "  [2/4] agent preset -> $PresetDst"
 
-# ── 3. EPCD UI 插件（三处同步：packages 源 + node_modules + package.json）──
-#     canonical 源在 plugins/epcd-ui-persist/（lib/* + package.json）
+# ── 3. EPCD UI 插件：软链部署（单一事实源，幂等）────────────────────────────
+#     插件采用「单一事实源 + 软链」架构：canonical 在 plugins/epcd-ui-persist/lib/，
+#     而 profile 的 packages/epcd-ui-plugin/lib/ 与 node_modules/epcd-ui-plugin/lib/
+#     下的 index.js/client.js 都是软链指向 canonical，改 canonical 即刻生效、无需三处同步。
+#     package.json 不是软链，三处各持一份实体（内容一致），此处用 Copy-Item 同步。
+#     幂等：重复执行不覆盖已有软链、不产生 "same file" 警告、不破坏 pnpm 布局。
 $PluginSrc = Join-Path $RepoRoot 'plugins\epcd-ui-persist'
-$PkgDst    = Join-Path $ProfileDst 'packages\epcd-ui-plugin'
-$NmDst     = Join-Path $ProfileDst 'node_modules\epcd-ui-plugin'
-New-Item -ItemType Directory -Force -Path $PkgDst | Out-Null
-New-Item -ItemType Directory -Force -Path $NmDst  | Out-Null
-Copy-Item (Join-Path $PluginSrc 'package.json') $PkgDst -Force
-Copy-Item (Join-Path $PluginSrc 'lib') $PkgDst -Force -Recurse
-# node_modules 侧只需解析用（与 packages 一侧保持一致）
-Copy-Item (Join-Path $PluginSrc 'package.json') $NmDst -Force
-Copy-Item (Join-Path $PluginSrc 'lib') $NmDst -Force -Recurse
-Write-Host "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（三处同步完成两处）"
+$LibSrc    = Join-Path $PluginSrc 'lib'
+# 把 canonical 的 lib 文件以「软链」镜像到目标目录（幂等：已是正确软链则跳过，否则修正）。
+function Relink-EpcdLib {
+    param([string]$Dst)
+    New-Item -ItemType Directory -Force -Path (Join-Path $Dst 'lib') | Out-Null
+    Get-ChildItem -Path $LibSrc -Filter '*.js' -File | ForEach-Object {
+        $target = Join-Path $Dst ('lib\' + $_.Name)
+        if (Test-Path $target) {
+            $item = Get-Item $target
+            $isRightLink = $item.LinkType -eq 'SymbolicLink' -and ($item.Target -eq $_.FullName)
+            if (-not $isRightLink) { Remove-Item $target -Force -Recurse -ErrorAction SilentlyContinue }
+            else { return }
+        }
+        New-Item -ItemType SymbolicLink -Path $target -Target $_.FullName | Out-Null
+    }
+}
+# 两处 DSH 实际加载的位置都镜像为软链（packages = pnpm file: 依赖源，node_modules = 解析落点）
+Relink-EpcdLib (Join-Path $ProfileDst 'packages\epcd-ui-plugin')
+Relink-EpcdLib (Join-Path $ProfileDst 'node_modules\epcd-ui-plugin')
+# package.json 三处实体同步（canonical → packages → node_modules），内容一致
+Copy-Item (Join-Path $PluginSrc 'package.json') (Join-Path $ProfileDst 'packages\epcd-ui-plugin\package.json') -Force
+Copy-Item (Join-Path $PluginSrc 'package.json') (Join-Path $ProfileDst 'node_modules\epcd-ui-plugin\package.json') -Force
+Write-Host "  [3/4] epcd-ui-plugin -> packages/ 与 node_modules/（lib 软链 + package.json 三处实体同步）"
+
+# ── 3.5 补 @deepseek-ai/dsh-tools 软链（修复 ERR_MODULE_NOT_FOUND）──────────
+#     epcd-ui-plugin 的 lib/index.js `import { defineTool } from "@deepseek-ai/dsh-tools"`，
+#     而 dsh-tools 只声明为 peerDependency。DSH 模块 fallback 因「该包已存在于 dsh 本体依赖树」
+#     而跳过把它软链进 profile 专属 node_modules，导致插件 import 时解析不到。
+#     插件 lib 是软链（realpath 落到仓库 canonical），Node 从仓库根路径向上查 node_modules，
+#     故只需在仓库根 node_modules 建这一处软链。目标指向 DSH 维护的共享层（随 DSH 版本自动更新）。
+$SharedDep = Join-Path $DshHome 'profiles\node_modules\@deepseek-ai\dsh-tools'
+if (Test-Path $SharedDep) {
+    $RepoLink = Join-Path $RepoRoot 'node_modules\@deepseek-ai'
+    New-Item -ItemType Directory -Force -Path $RepoLink | Out-Null
+    $RepoLinkTarget = Join-Path $RepoLink 'dsh-tools'
+    if (Test-Path $RepoLinkTarget) { Remove-Item $RepoLinkTarget -Force -Recurse -ErrorAction SilentlyContinue }
+    New-Item -ItemType SymbolicLink -Path $RepoLinkTarget -Target $SharedDep | Out-Null
+    Write-Host "  [3.5/4] @deepseek-ai/dsh-tools 软链 -> 共享层（仓库根 node_modules）"
+} else {
+    Write-Warning "  [3.5/4] 共享层未找到 $SharedDep，跳过软链；若启动仍报 dsh-tools，请先完整安装 dsh。"
+}
 
 # ── 4. 树外依赖（dsh-ssh，经 dsh plugin 转发 pnpm）────────────────────────
 #     注：0.1.5-rc.1 起 DSH 内置右侧 sidebar，无需再装第三方 dsh-better-sidebar。
-#     定位 dsh bin：优先 APPDATA 默认路径，其次 npm 全局前缀。
-$DshBin = $null
-$Candidate1 = Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh\lib\bin.js'
-if (Test-Path $Candidate1) {
-    $DshBin = $Candidate1
+#     幂等：若 dsh-ssh 已在 profile node_modules 就绪且 package.json 已声明，则跳过 pnpm。
+$SshPkgDst = Join-Path $ProfileDst 'node_modules\@linxin666\dsh-ssh'
+$ProfilePkgJson = Join-Path $ProfileDst 'package.json'
+$SshDeclared = (Test-Path $ProfilePkgJson) -and ((Get-Content $ProfilePkgJson -Raw) -match '"@linxin666/dsh-ssh"')
+if ((Test-Path $SshPkgDst) -and $SshDeclared) {
+    Write-Host "  [4/4] dsh-ssh 已就绪（跳过 pnpm add，幂等）"
 } else {
-    $GlobalPrefix = npm prefix -g 2>$null
-    if ($GlobalPrefix) {
-        $Candidate2 = Join-Path $GlobalPrefix 'node_modules\@deepseek-ai\dsh\lib\bin.js'
-        if (Test-Path $Candidate2) { $DshBin = $Candidate2 }
+    # 定位 dsh bin：优先 APPDATA 默认路径，其次 npm 全局前缀。
+    $DshBin = $null
+    $Candidate1 = Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh\lib\bin.js'
+    if (Test-Path $Candidate1) {
+        $DshBin = $Candidate1
+    } else {
+        $GlobalPrefix = npm prefix -g 2>$null
+        if ($GlobalPrefix) {
+            $Candidate2 = Join-Path $GlobalPrefix 'node_modules\@deepseek-ai\dsh\lib\bin.js'
+            if (Test-Path $Candidate2) { $DshBin = $Candidate2 }
+        }
     }
-}
-if (-not $DshBin) {
-    Write-Warning "  [4/4] 未找到 dsh bin.js，跳过依赖安装。请手动执行："
-    Write-Warning "        npx @deepseek-ai/dsh plugin --profile epcd add '@linxin666/dsh-ssh'"
-    Write-Warning "        （需先确保 pnpm 在 PATH）"
-} else {
-    node $DshBin plugin --profile epcd add "@linxin666/dsh-ssh"
-    Write-Host "  [4/4] dsh-ssh 已安装"
+    if (-not $DshBin) {
+        Write-Warning "  [4/4] 未找到 dsh bin.js，跳过依赖安装。请手动执行："
+        Write-Warning "        npx @deepseek-ai/dsh plugin --profile epcd add '@linxin666/dsh-ssh'"
+        Write-Warning "        （需先确保 pnpm 在 PATH）"
+    } else {
+        node $DshBin plugin --profile epcd add "@linxin666/dsh-ssh"
+        Write-Host "  [4/4] dsh-ssh 已安装"
+    }
 }
 
 Write-Host ""
 Write-Host "部署完成。" -ForegroundColor Green
-Write-Host "  下一步（一次性）：编辑/确认 $RepoRoot\epcd-config.json 的 ssh/pkg/technology/workDirRoot"
+Write-Host "  下一步（一次性）：编辑/确认 $RepoRoot\epcd-configs.json 的 host/port/user/identityFile/pkg/technology/workDirRoot"
 Write-Host "  启动：npx @deepseek-ai/dsh --profile epcd --port 8091  （headless 服务器加 EPCD_HOST=0.0.0.0 前缀）"
 Write-Host "  浏览器：http://127.0.0.1:8091"

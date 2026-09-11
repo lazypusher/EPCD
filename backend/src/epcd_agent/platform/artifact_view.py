@@ -38,12 +38,15 @@ def build_artifact_cards(job_result_data: dict) -> list[dict]:
     return cards
 
 
-def _fetch_remote(cli_argv_prefix: tuple, remote_path: str, local_path: pathlib.Path) -> bool:
+def _fetch_remote(ssh_connect: tuple, remote_path: str, local_path: pathlib.Path) -> bool:
     """ssh joins argv tokens with spaces; the base64 command must be ONE token.
-    Returns False when the fetch fails (card keeps localPath=None)."""
-    host = cli_argv_prefix[3]
-    proc = subprocess.run(["ssh", "-o", "BatchMode=yes", host,
-                           f"base64 -w0 {remote_path}"],
+    Returns False when the fetch fails (card keeps localPath=None).
+
+    ``ssh_connect`` is the same platform-independent connect argv used to run
+    epcd-cli (``ssh -o BatchMode=yes [-o HostName=...] [-o User=...] [-i ...] <target>``),
+    so artifact downloads never depend on the local ssh config path either.
+    """
+    proc = subprocess.run(list(ssh_connect) + [f"base64 -w0 {remote_path}"],
                           capture_output=True, timeout=120)
     if proc.returncode != 0:
         return False
@@ -59,7 +62,12 @@ def artifact_view(ctx: ToolContext, job_id: str, fetch_dir: str | None = None) -
     if fetch_dir:
         target_dir = pathlib.Path(fetch_dir)
         target_dir.mkdir(parents=True, exist_ok=True)
-        remote_mode = bool(ctx.cli.argv_prefix) and ctx.cli.argv_prefix[0] == "ssh"
+        # Prefer the explicit ssh connect args carried on ctx (platform-independent);
+        # fall back to the legacy heuristic (argv_prefix[0] == "ssh") for callers
+        # that predate ToolContext.ssh_connect.
+        ssh_connect = getattr(ctx, "ssh_connect", ())
+        remote_mode = bool(ssh_connect) or (
+            bool(ctx.cli.argv_prefix) and ctx.cli.argv_prefix[0] == "ssh")
         for card in cards:
             remote = card["remotePath"]
             if not remote:
@@ -68,7 +76,9 @@ def artifact_view(ctx: ToolContext, job_id: str, fetch_dir: str | None = None) -
             # handles both POSIX remote paths and local Windows paths.
             local = target_dir / pathlib.PurePath(remote).name
             if remote_mode:
-                if not _fetch_remote(ctx.cli.argv_prefix, remote, local):
+                connect = ssh_connect if ssh_connect else ("ssh", "-o", "BatchMode=yes",
+                                                           ctx.cli.argv_prefix[3])
+                if not _fetch_remote(connect, remote, local):
                     continue  # 单件失败不阻塞清单
             else:
                 shutil.copy(remote, local)

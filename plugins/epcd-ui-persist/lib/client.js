@@ -340,7 +340,7 @@ window.__ModuleLoader__.load({
       );
     }
 
-    var CFG_FIELDS = ["ssh", "pkg", "technology", "workDirRoot"];
+    var CFG_FIELDS = ["host", "port", "user", "identityFile", "pkg", "technology", "workDirRoot"];
 
     function ConfigPanel(props) {
       var sessionId = props.sessionId || null;
@@ -350,6 +350,9 @@ window.__ModuleLoader__.load({
       var vst = React.useState({});
       var values = vst[0];
       var setValues = vst[1];
+      var namest = React.useState("");
+      var name = namest[0];
+      var setName = namest[1];
       var sav = React.useState("none"); // none | saving | saved | error
       var saveState = sav[0];
       var setSaveState = sav[1];
@@ -366,9 +369,10 @@ window.__ModuleLoader__.load({
             .then(function (d) {
               if (cancelled) return;
               setState({ status: "ready", data: d, error: null });
-              var eff = d.effective || {};
+              setName(d.active || "");
+              var cfg = d.activeConfig || {};
               var next = {};
-              for (var i = 0; i < CFG_FIELDS.length; i++) next[CFG_FIELDS[i]] = eff[CFG_FIELDS[i]] || "";
+              for (var i = 0; i < CFG_FIELDS.length; i++) next[CFG_FIELDS[i]] = cfg[CFG_FIELDS[i]] || "";
               setValues(next);
             })
             .catch(function (e) {
@@ -387,28 +391,29 @@ window.__ModuleLoader__.load({
         setValues(next);
       }
 
-      function save() {
+      function post(body) {
         setSaveState("saving");
         setSaveMsg("");
-        fetch("/api/epcd-config", {
+        return fetch("/api/epcd-config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session: sessionId, config: values })
+          body: JSON.stringify(Object.assign({ session: sessionId }, body))
         })
           .then(function (r) { return r.json(); })
           .then(function (d) {
             if (d.ok) {
               setSaveState("saved");
-              setSaveMsg("已保存到项目配置 " + (d.cwd || ""));
               setState({ status: "ready", data: d, error: null });
-              var eff = d.effective || {};
+              setName(d.active || "");
+              var cfg = d.activeConfig || {};
               var next = {};
-              for (var i = 0; i < CFG_FIELDS.length; i++) next[CFG_FIELDS[i]] = eff[CFG_FIELDS[i]] || "";
+              for (var i = 0; i < CFG_FIELDS.length; i++) next[CFG_FIELDS[i]] = cfg[CFG_FIELDS[i]] || "";
               setValues(next);
             } else {
               setSaveState("error");
-              setSaveMsg(d.error || "保存失败");
             }
+            setSaveMsg(d.ok ? "已完成" : (d.error || "操作失败"));
+            return d;
           })
           .catch(function (e) {
             setSaveState("error");
@@ -416,8 +421,39 @@ window.__ModuleLoader__.load({
           });
       }
 
+      function save() {
+        post({ action: "save", name: name, config: values }).then(function (d) {
+          if (d && d.ok) setSaveMsg("已保存配置 " + name);
+        });
+      }
+
+      function activate(name2) {
+        var next = {};
+        var cfg = (state.data && state.data.configs && state.data.configs[name2]) || {};
+        for (var i = 0; i < CFG_FIELDS.length; i++) next[CFG_FIELDS[i]] = cfg[CFG_FIELDS[i]] || "";
+        setValues(next);
+        setName(name2);
+        post({ action: "activate", name: name2 });
+      }
+
+      function remove() {
+        if (!name) return;
+        if (!window.confirm("删除配置 \"" + name + "\"？此操作不可撤销。")) return;
+        post({ action: "delete", name: name });
+      }
+
+      function create() {
+        var n = window.prompt("新建配置名（例如 zhubo-prod）：", "");
+        if (!n) return;
+        var cfg = {};
+        for (var i = 0; i < CFG_FIELDS.length; i++) cfg[CFG_FIELDS[i]] = values[CFG_FIELDS[i]] || "";
+        post({ action: "save", name: n, config: cfg }).then(function (d) {
+          if (d && d.ok) setSaveMsg("已新建并切换配置 " + n);
+        });
+      }
+
       var rootStyle = { minWidth: 0, color: "#1f2329" };
-      var cwdLine = !sessionId ? "未定位到项目" : (state.data && state.data.cwd ? ("项目目录：" + state.data.cwd) : "项目配置覆盖默认值（见下方「默认」标记）");
+      var cwdLine = !sessionId ? "未定位到项目" : (state.data && state.data.cwd ? ("项目目录：" + state.data.cwd) : "项目内 epcd-configs.json");
       var head = React.createElement("div", { style: { display: "flex", alignItems: "flex-start", marginBottom: 14 } },
         React.createElement("div", { style: { flex: 1, minWidth: 0 } },
           React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 3 } }, "EPCD 项目配置"),
@@ -447,16 +483,36 @@ window.__ModuleLoader__.load({
       }
 
       var d = state.data || {};
-      var defaults = d.defaults || {};
-      var project = d.project || {};
+      var list = d.list || [];
       var cache = d.cache || {};
-      var labels = d.labels || { ssh: "SSH 别名", pkg: "EPCD 包根", technology: "工艺文件", workDirRoot: "工作目录根" };
+      var labels = d.labels || {};
       var fields = d.fields || CFG_FIELDS;
+
+      // 配置选择/切换/新建/删除工具条
+      var selector = list.length
+        ? list.map(function (k) {
+            var isActive = k === (d.active || "");
+            return React.createElement("button", {
+              key: k,
+              onClick: function () { activate(k); },
+              style: {
+                fontSize: 12, padding: "5px 10px", margin: "0 6px 6px 0", cursor: "pointer",
+                border: isActive ? "1px solid #4c7ff0" : "1px solid #e5e7eb",
+                borderRadius: 8, background: isActive ? "#4c7ff0" : "#f5f6f8", color: isActive ? "#fff" : "#333"
+              }
+            }, k);
+          })
+        : [React.createElement("span", { key: "none", style: { fontSize: 11, color: "#9aa3ad" } }, "暂无配置，请新建")];
+
+      var toolbar = React.createElement("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", marginBottom: 14 } },
+        React.createElement("span", { style: { fontSize: 12, fontWeight: 600, marginRight: 8 } }, "当前配置：" + (d.active || "（无）")),
+        selector,
+        React.createElement("button", { onClick: create, style: btnStyle(false) }, "新建"),
+        React.createElement("button", { onClick: remove, style: btnStyle(true) }, "删除")
+      );
 
       var fieldBlocks = fields.map(function (f) {
         var cur = values[f] || "";
-        var source = project[f] ? "项目" : (defaults[f] ? "默认" : "未设置");
-        var srcColor = project[f] ? "#1a7f37" : "#9aa3ad";
         var chips = [];
         var seen = {};
         for (var ci = 0; ci < (cache[f] || []).length; ci++) {
@@ -471,7 +527,7 @@ window.__ModuleLoader__.load({
               style: {
                 maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 fontSize: 11, padding: "3px 8px", margin: "0 6px 6px 0", cursor: "pointer",
-                border: "1px solid #e5e7eb", borderRadius: 999, background: "var(--dsw-alias-bg-layer-2, #f5f6f8)", color: "#333"
+                border: "1px solid #e5e7eb", borderRadius: 999, background: "#f5f6f8", color: "#333"
               }
             }, v));
           })(cv);
@@ -479,17 +535,16 @@ window.__ModuleLoader__.load({
         return React.createElement("div", { key: f, style: { marginBottom: 18, padding: "12px", border: "1px solid #ececf0", borderRadius: 10 } },
           React.createElement("div", { style: { display: "flex", alignItems: "baseline", marginBottom: 8 } },
             React.createElement("span", { style: { fontSize: 13, fontWeight: 600, marginRight: 8 } }, labels[f] || f),
-            React.createElement("span", { style: { fontSize: 11, color: srcColor } }, source),
             React.createElement("span", { style: { marginLeft: "auto", fontSize: 11, color: "#9aa3ad" } }, f)
           ),
           React.createElement("input", {
             value: cur,
-            placeholder: "留空则用默认值",
+            placeholder: "留空则缺省",
             onChange: function (e) { onField(f, e.target.value); },
             style: {
               width: "100%", boxSizing: "border-box", fontSize: 12, padding: "7px 10px",
               border: "1px solid #d5d9e0", borderRadius: 6, marginBottom: 8,
-              background: "var(--dsw-alias-bg-layer-1, #fff)", color: "#1f2329", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace"
+              background: "#fff", color: "#1f2329", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace"
             }
           }),
           chips.length ? React.createElement("div", { style: { display: "flex", flexWrap: "wrap", alignItems: "center" } },
@@ -499,6 +554,12 @@ window.__ModuleLoader__.load({
         );
       });
 
+      function btnStyle(danger) {
+        var base = { fontSize: 12, padding: "5px 12px", marginLeft: 6, cursor: "pointer", borderRadius: 8 };
+        if (danger) return Object.assign({}, base, { border: "1px solid #e5e7eb", background: "transparent", color: "#c0392b" });
+        return Object.assign({}, base, { border: "1px solid #4c7ff0", background: "transparent", color: "#4c7ff0" });
+      }
+
       var saveBtn = React.createElement("button", {
         onClick: save,
         disabled: saveState === "saving",
@@ -506,15 +567,16 @@ window.__ModuleLoader__.load({
           padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: saveState === "saving" ? "default" : "pointer",
           borderRadius: 8, border: "1px solid #4c7ff0", background: "#4c7ff0", color: "#fff", opacity: saveState === "saving" ? 0.6 : 1
         }
-      }, saveState === "saving" ? "保存中…" : "保存配置");
+      }, saveState === "saving" ? "保存中…" : "保存修改");
       var statusNode = saveMsg ? React.createElement("span", { style: { marginLeft: 10, fontSize: 12, color: saveState === "error" ? "#c0392b" : "#1a7f37" } }, saveMsg) : null;
 
       return React.createElement("div", { style: rootStyle },
         head,
+        toolbar,
         fieldBlocks,
         React.createElement("div", { style: { display: "flex", alignItems: "center", marginTop: 4 } }, saveBtn, statusNode),
         React.createElement("div", { style: { fontSize: 11, color: "#9aa3ad", marginTop: 10, lineHeight: 1.6 } },
-          "说明：留空的字段回落到默认值；输入/保存过的路径会进入「历史」，下次点一下即可快速切换，无需重复输入。")
+          "说明：一套配置包含连接（主机/端口/用户/密钥）、EPCD 包根、工艺文件与工作目录，切换即可整体生效；「保存修改」把当前字段写回所选配置，「新建」复制当前值另存为一份新配置。")
       );
     }
 

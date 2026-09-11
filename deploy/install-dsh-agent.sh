@@ -45,21 +45,63 @@ mkdir -p "$PRESET_DST"
 cp -r "$REPO_ROOT/platform-dsh/agent-preset/." "$PRESET_DST/"
 echo "  [2/5] agent preset -> $PRESET_DST"
 
-# ── 3. EPCD UI 插件（三处同步：packages 源 + node_modules + package.json）───
+# ── 3. EPCD UI 插件：软链部署（单一事实源，幂等）────────────────────────────
+#     插件采用「单一事实源 + 软链」架构：canonical 在 plugins/epcd-ui-persist/lib/，
+#     而 profile 的 packages/epcd-ui-plugin/lib/ 与 node_modules/epcd-ui-plugin/lib/
+#     下的 index.js/client.js 都是软链指向 canonical，改 canonical 即刻生效、无需三处同步。
+#     package.json 不是软链，三处各持一份实体（内容一致），此处用 cp 同步。
+#     幂等：重复执行不覆盖已有软链、不产生 "same file" 警告、不破坏 pnpm 布局。
 PLUGIN_SRC="$REPO_ROOT/plugins/epcd-ui-persist"
-PKG_DST="$PROFILE_DST/packages/epcd-ui-plugin"
-NM_DST="$PROFILE_DST/node_modules/epcd-ui-plugin"
-mkdir -p "$PKG_DST" "$NM_DST"
-cp "$PLUGIN_SRC/package.json" "$PKG_DST/"
-cp -r "$PLUGIN_SRC/lib"        "$PKG_DST/"
-cp "$PLUGIN_SRC/package.json" "$NM_DST/"
-cp -r "$PLUGIN_SRC/lib"        "$NM_DST/"
-echo "  [3/5] epcd-ui-plugin -> packages/ 与 node_modules/（三处同步完成两处）"
+LIB_SRC="$PLUGIN_SRC/lib"
+# 把 canonical 的 lib 文件以「软链」镜像到目标目录（幂等：已是正确软链则跳过，否则修正）。
+relink_lib() {
+  local dst="$1"
+  mkdir -p "$dst/lib"
+  local f t
+  shopt -s nullglob   # canonical 无 .js 时 glob 为空，避免字面量 path 出错
+  for f in "$LIB_SRC"/*.js; do
+    t="$dst/lib/$(basename "$f")"
+    if [ -L "$t" ] && [ "$(readlink -f "$t")" = "$(readlink -f "$f")" ]; then
+      continue                        # 已是正确软链，跳过
+    fi
+    rm -f "$t"                        # 修正错误的软链 / 实体副本
+    ln -s "$f" "$t"
+  done
+  shopt -u nullglob
+}
+# 两处 DSH 实际加载的位置都镜像为软链（packages = pnpm file: 依赖源，node_modules = 解析落点）
+relink_lib "$PROFILE_DST/packages/epcd-ui-plugin"
+relink_lib "$PROFILE_DST/node_modules/epcd-ui-plugin"
+# package.json 三处实体同步（canonical → packages → node_modules），内容一致
+cp "$PLUGIN_SRC/package.json" "$PROFILE_DST/packages/epcd-ui-plugin/package.json"
+cp "$PLUGIN_SRC/package.json" "$PROFILE_DST/node_modules/epcd-ui-plugin/package.json"
+echo "  [3/5] epcd-ui-plugin -> packages/ 与 node_modules/（lib 软链 + package.json 三处实体同步）"
+
+# ── 3.5 补 @deepseek-ai/dsh-tools 软链（修复 ERR_MODULE_NOT_FOUND）──────────
+#     epcd-ui-plugin 的 lib/index.js `import { defineTool } from "@deepseek-ai/dsh-tools"`，
+#     而 dsh-tools 只声明为 peerDependency。DSH 模块 fallback 因「该包已存在于 dsh 本体依赖树」
+#     而跳过把它软链进 profile 专属 node_modules，导致插件 import 时解析不到。
+#     插件 lib 是软链（realpath 落到仓库 canonical），Node 从仓库根路径向上查 node_modules，
+#     故只需在仓库根 node_modules 建这一处软链。目标指向 DSH 维护的共享层
+#     （profiles/node_modules，随 DSH 版本自动更新），版本始终与 DSH 本体一致。
+SHARED_DEP="$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-tools"
+if [ -e "$SHARED_DEP" ]; then
+  REPO_LINK="$REPO_ROOT/node_modules/@deepseek-ai"
+  mkdir -p "$REPO_LINK"
+  ln -sfn "$SHARED_DEP" "$REPO_LINK/dsh-tools"
+  echo "  [3.5/5] @deepseek-ai/dsh-tools 软链 -> 共享层（仓库根 node_modules）"
+else
+  echo "  [3.5/5] 警告：共享层未找到 $SHARED_DEP，跳过软链；若启动仍报 dsh-tools，请先完整安装 dsh。" >&2
+fi
 
 # ── 4. 树外依赖（dsh-ssh，经 dsh plugin 转发 pnpm）─────────────────────────
 #     注：0.1.5-rc.1 起 DSH 内置右侧 sidebar，无需再装第三方 dsh-better-sidebar。
-#     dsh plugin 本质 = 在 profile 目录跑 pnpm add，故同时需要 dsh（或 npx）与 pnpm。
-if command -v dsh >/dev/null 2>&1; then
+#     dsh plugin 本质 = 在 profile 目录跑 pnpm add。幂等：若 dsh-ssh 已在 profile
+#     node_modules 就绪且 package.json 已声明，则跳过 pnpm（避免重复解析与 supply-chain 校验）。
+SSH_PKG_DST="$PROFILE_DST/node_modules/@linxin666/dsh-ssh"
+if [ -d "$SSH_PKG_DST" ] && grep -q '"@linxin666/dsh-ssh"' "$PROFILE_DST/package.json" 2>/dev/null; then
+  echo "  [4/5] dsh-ssh 已就绪（跳过 pnpm add，幂等）"
+elif command -v dsh >/dev/null 2>&1; then
   dsh plugin --profile epcd add "@linxin666/dsh-ssh"
   echo "  [4/5] dsh-ssh 已安装"
 elif command -v npx >/dev/null 2>&1; then
@@ -85,6 +127,6 @@ fi
 
 echo ""
 echo "部署完成。"
-echo "  下一步（一次性）：编辑/确认 $REPO_ROOT/epcd-config.json 的 ssh/pkg/technology/workDirRoot"
+echo "  下一步（一次性）：编辑/确认 $REPO_ROOT/epcd-configs.json 的 host/port/user/identityFile/pkg/technology/workDirRoot"
 echo "  启动（headless 服务器需绑 0.0.0.0，见 deploy/README.md）：EPCD_HOST=0.0.0.0 npx @deepseek-ai/dsh --profile epcd --port 8091"
 echo "  浏览器（局域网）：http://<服务器IP>:8091"

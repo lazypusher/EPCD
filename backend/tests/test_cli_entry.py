@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -9,10 +10,38 @@ def test_build_argv_prefix_local():
     assert build_argv_prefix() == ("epcd-cli",)
 
 
-def test_build_argv_prefix_ssh():
-    prefix = build_argv_prefix(ssh_host="zhubo@192.168.20.243", pkg_root="/package/PKG")
+def test_build_argv_prefix_ssh_legacy_alias():
+    # 只有 ssh 别名、无显式连接字段时：回退为 legacy——让 ssh 自己读本机 config 解析别名。
+    prefix = build_argv_prefix(ssh_host="epcd-primary", pkg_root="/package/PKG")
     assert prefix == (
-        "ssh", "-o", "BatchMode=yes", "zhubo@192.168.20.243",
+        "ssh", "-o", "BatchMode=yes", "epcd-primary",
+        "source", "/package/PKG/user.bashrc.ePCD", ">/dev/null", "2>&1;",
+        "[", "-f", "~/.epcd-env", "]", "&&", "source", "~/.epcd-env", ";",
+        "epcd-cli")
+
+
+def test_build_argv_prefix_ssh_explicit_connect():
+    # 显式 host/user/port/identity_file：-F 指到 temp 目录下的 EPCD 自有空 config
+    # （跳过系统/用户 config），连接参数全走 -o/-i，跨平台。
+    import tempfile
+    prefix = build_argv_prefix(
+        ssh_host="epcd-primary", pkg_root="/package/PKG",
+        host="192.168.20.243", user="zhubo", port="22",
+        identity_file="~/.ssh/id_rsa_epcdB")
+    # connect 部分：ssh -F <temp inline config> -o BatchMode=yes -o HostName=... -o User=... -o Port=... -i <key> <target>
+    connect = prefix[:14]
+    assert connect[0] == "ssh"
+    assert connect[1] == "-F"
+    assert connect[2] == os.path.join(tempfile.gettempdir(), "epcd-inline-ssh-config")
+    assert connect[3:] == (
+        "-o", "BatchMode=yes",
+        "-o", "HostName=192.168.20.243",
+        "-o", "User=zhubo",
+        "-o", "Port=22",
+        "-i", os.path.expanduser("~/.ssh/id_rsa_epcdB"),
+        "epcd-primary")
+    # source/pkg/cli_bin 尾巴不变
+    assert prefix[14:] == (
         "source", "/package/PKG/user.bashrc.ePCD", ">/dev/null", "2>&1;",
         "[", "-f", "~/.epcd-env", "]", "&&", "source", "~/.epcd-env", ";",
         "epcd-cli")

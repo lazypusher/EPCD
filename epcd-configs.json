@@ -1,0 +1,23 @@
+{
+  "active": "zhubo-prod",
+  "configs": {
+    "zhubo-prod": {
+      "host": "192.168.20.243",
+      "port": 22,
+      "user": "zhubo",
+      "identityFile": "~/.ssh/id_rsa_epcdB",
+      "pkg": "/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default",
+      "technology": "/home/zhubo/demo_revised.ptxt",
+      "workDirRoot": "/home/zhubo/epcd-runs"
+    },
+    "temp": {
+      "host": "192.168.20.243",
+      "port": 22,
+      "user": "zhubo",
+      "identityFile": "~/.ssh/id_rsa_epcdB",
+      "pkg": "/package/eda9cube-d2026.06.6092-2026_06_sp1-g317a9fd-NINECUBE-2026-08-07-linux-x86-64-default",
+      "technology": "/home/zhubo/demo_revised.ptxt",
+      "workDirRoot": "/home/zhubo/epcd-runs"
+    }
+  }
+}

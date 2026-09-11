@@ -27,6 +27,13 @@ class ToolContext:
     cli: EpcdCli
     store: SessionStore
     session_id: str
+    # ssh 连接参数（平台无关、来自 epcd-configs.json 的 active config）。
+    # artifact_view 用它在不依赖本机 ssh config 路径的情况下拉取远端产物。
+    ssh_connect: tuple = ()
+    # 来自 active config 的工艺文件路径（epcd_project init 缺 technology 时回落）。
+    technology: str | None = None
+    # 来自 active config 的工作目录根（远端绝对路径）。
+    work_dir_root: str | None = None
 
 
 def result_from_exec(result: ExecResult) -> ToolResult:

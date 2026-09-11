@@ -17,6 +17,8 @@ def epcd_project(ctx: ToolContext, action: str, work_dir: str | None = None,
                  technology: str | None = None, password: str | None = None) -> ToolResult:
     """project init/describe/validate (release doc section 4.2)."""
     if action == "init":
+        # technology 缺省时从 active config 自动带出；work_dir 仍必填（skill 拼好）。
+        technology = technology or getattr(ctx, "technology", None)
         if not work_dir or not technology:
             raise ToolInputError("project init requires work_dir and technology")
         args = ["project", "init", "--work-dir", work_dir, "--technology", technology]
