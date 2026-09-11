@@ -57,9 +57,11 @@ const EPCD_TOOLS = [
   "artifact_view",
 ];
 
-// 定位 backend 目录：优先环境变量，否则假定会话 cwd 是仓库根（backend/ 子目录）。
-function resolveBackendDir() {
+// 定位 backend 目录：优先环境变量，其次用会话 cwd（仓库根，backend/ 子目录），
+// 最后才回落到宿主进程 cwd（不应依赖它——DSH 宿主进程的 cwd 通常不是仓库根）。
+function resolveBackendDir(cwd) {
   if (process.env.EPCD_BACKEND_DIR) return resolve(process.env.EPCD_BACKEND_DIR);
+  if (cwd) return resolve(cwd, "backend");
   return resolve(process.cwd(), "backend");
 }
 
@@ -74,7 +76,7 @@ function resolvePython(backendDir) {
 const EPCD_CLI_TIMEOUT_MS = Number(process.env.EPCD_CLI_TIMEOUT_MS) || 600000;
 
 function runEpcdCli({ tool, input, cwd, session }) {
-  const backendDir = resolveBackendDir();
+  const backendDir = resolveBackendDir(cwd);
   const python = resolvePython(backendDir);
   const args = ["-m", "epcd_agent.cli"];
   // 一刀切：后端只认 --config-file（项目内 epcd-configs.json 的绝对路径）。
