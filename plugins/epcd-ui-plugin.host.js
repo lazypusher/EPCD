@@ -31,6 +31,35 @@ function jsonBlock(value) {
   return [{ type: 'text', text: JSON.stringify(value) }]
 }
 
+// 净化 Touchstone（S2P）文本：保留表格头（S 参数格式行 + 列头）与频率行，
+// 去掉文件头部的 ewave 命令行 / 端口注释 / 路径等元信息。
+function sanitizeS2P(text) {
+  if (typeof text !== 'string') return text
+  var lines = text.split(/\r?\n/)
+  var out = []
+  var hasHeader = false // 已保留 "# HZ S RI R 50" 格式行
+  var keptColumnHeader = false // 已保留紧跟格式行的那条 "! freq reS11 ..." 列头
+  var seenData = false
+  for (var i = 0; i < lines.length; i++) {
+    var t = lines[i].trim()
+    if (t.charAt(0) === '#') {
+      if (!hasHeader) { out.push(lines[i]); hasHeader = true }
+      continue
+    }
+    if (t.charAt(0) === '!') {
+      // 仅保留紧跟 "# HZ..." 格式行之后的第一条注释（即列头），其余 ewave 命令/端口/路径注释丢弃
+      if (hasHeader && !keptColumnHeader && !seenData && /freq/i.test(t)) {
+        out.push(lines[i]); keptColumnHeader = true
+      }
+      continue
+    }
+    if (t === '') { if (seenData) out.push(lines[i]); continue }
+    if (/^[\d.+-eE]/.test(t)) { seenData = true; out.push(lines[i]) }
+  }
+  if (!hasHeader && !seenData) return text // 非标准 S2P，回退原文
+  return out.join('\n')
+}
+
 return {
   apply(ctx) {
     var fs = ctx.get('fs')
@@ -99,7 +128,9 @@ return {
             } else {
               var t2 = await fs.resolve(f.path)
               var text = await fs.readText(t2)
-              entry.text = text.length > 20000 ? text.slice(0, 20000) + '\n...(截断)' : text
+              var capped = text.length > 20000 ? text.slice(0, 20000) + '\n...(截断)' : text
+              // S2P 只展示表格数据，去掉 ewave 命令/路径等文件头注释
+              entry.text = (f.kind === 's2p') ? sanitizeS2P(capped) : capped
             }
           } catch (e) {
             entry.error = String((e && e.message) || e)

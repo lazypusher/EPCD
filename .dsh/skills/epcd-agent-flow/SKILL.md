@@ -124,6 +124,10 @@ epcd_cli {
 - 数字/指标用紧凑列表或小表，**不要**贴 JSON 原文。
 - 选项固定三选「批准 / 修改后批准 / 终止」，每个 option 的 description 写一句
   「点了会发生什么」；「修改后批准」的 description 写清本卡能改哪些项。
+- **单频点任务的「最终仿真确认卡」例外**：除「是否跑最终仿真」外，必须主动并列提供
+  `point 仿真`（目标频点单点）与 `range 仿真`（频段整体效果）两种仿真方式选项；`range` 选项
+  要让用户能补充频段范围（可在 option description 里写「请同时告知频段，如 1–3 GHz」，或另起
+  一张只问频段的最小卡）。这是为了让用户看到已写回几何在整段频率上的表现，而非只盯单点。
 
 ## 阶段流程
 
@@ -214,13 +218,27 @@ resume_from=<上一 task_id>, max_rounds=<新增轮数>)`。`resume_from` 把上
 喂回 TPE 后验继续；`max_rounds` 是**本轮新增轮数**（不是累计总数），`data.warm_started_rounds` 供汇报。
 
 ### 5. 最终仿真确认 → 交付
-写回后 `ask_user_question` 确认最终仿真 → `epcd_run`（`task="simulation-evaluation"`、
-`request_id="final-<best-job-id>"`、`wait=true` 不传 timeout）。注意 `epcd_run` 的 `task` 白名单
+写回后 `ask_user_question` 确认最终仿真。**单频点（point 目标）设计**在这一步的确认卡
+除「是否跑最终仿真」外，还必须主动提供**两种仿真方式**供用户选择（同一张卡内作为并列选项，
+或紧跟一张只问仿真方式的最小卡，二者择一即可）：
+
+- **point 仿真**（推荐默认）：在目标频点跑 `simulation-evaluation`，产单点 S 参数 + 目标验收。
+- **range 仿真**：用户会关注这套已写回几何在**一个频段上的整体效果**；此选项需支持用户输入
+  频段范围（如「1–3 GHz」）。落地 = 在写回后（保持几何不变）把 `sweeps` + objectives 的
+  `frequency` 临时改为 `range` 模式覆盖用户给的频段，再跑 `simulation-evaluation`；改频段
+  会触发 `JOB_CONFIG_CHANGED`（见 §4 写回顺序），故 range 仿真的顺序是：
+  **先 apply-result 写回几何 → 再 patch 频段/objectives（range）→ 再 `epcd_run`**。
+
+两种方式都跑 `task="simulation-evaluation"`、`request_id="final-<best-job-id>"`（range 可加
+`-range` 后缀区分）、`wait=true` 不传 timeout。注意 `epcd_run` 的 `task` 白名单
 只有 `simulation-evaluation` / `gds-generation`，**没有 `final`**；「final」只是流程语义，落在
 `request_id` 前缀。验收：逐条 `targetValue == objectives`、`satisfied` 判达标、`parametersUsed` 含写回几何。
 交付：`artifact_view`（不传 `fetch_dir`，产物自动落 `<repo>/runs/<器件名>/artifacts/`）拉产物、
 `epcd_artifacts` 渲染图库——版图三视图（`preview_top`/`preview_iso`/`preview_side`，
-kind=`image`，label=俯视/轴测/侧视）+ S2P/GDS/目标值。**所有本地产物只在 `<repo>/runs/<器件名>/` 下，
+kind=`image`，label=俯视/轴测/侧视）+ S2P/GDS + **`target-chart.png`（kind=`image`，label=目标达成图，
+用它替换「目标值 JSON」作为图项；目标值各指标已在结果文字里呈现，不再单独放 JSON 卡）**。
+**S2P 图项只传表格数据**（`# HZ S RI R 50` 起的频率行 + 列头），**不要带 Touchstone 文件头部的 ewave 命令行、
+端口注释、路径等元信息**。**所有本地产物只在 `<repo>/runs/<器件名>/` 下，
 不得落到 `backend/` 或其它散落目录。**
 
 ## 硬规则

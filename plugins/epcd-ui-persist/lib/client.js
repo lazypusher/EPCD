@@ -49,6 +49,47 @@ window.__ModuleLoader__.load({
       return null;
     }
 
+    // 为 target-chart 类型的图提供默认标题：性能指标图
+    function defaultLabel(a) {
+      if (a && a.label) return a.label;
+      if (a && a.path) {
+        var bn = String(a.path).split(/[\\/]/).pop() || "";
+        if (/target-chart/i.test(bn)) return "性能指标图";
+        return bn;
+      }
+      if (a && /target-chart/i.test(String(a.kind || ""))) return "性能指标图";
+      return "图像";
+    }
+
+    // 净化 Touchstone（S2P）文本：保留表格头（S 参数格式行 + 列头）与频率行，
+    // 去掉文件头部的 ewave 命令行 / 端口注释 / 路径等元信息（渲染层兜底）。
+    function sanitizeS2P(text) {
+      if (typeof text !== "string") return text;
+      var lines = text.split(/\r?\n/);
+      var out = [];
+      var hasHeader = false;
+      var keptColumnHeader = false;
+      var seenData = false;
+      for (var i = 0; i < lines.length; i++) {
+        var ln = lines[i];
+        var t = ln.trim();
+        if (t.charAt(0) === "#") {
+          if (!hasHeader) { out.push(ln); hasHeader = true; }
+          continue;
+        }
+        if (t.charAt(0) === "!") {
+          if (hasHeader && !keptColumnHeader && !seenData && /freq/i.test(t)) {
+            out.push(ln); keptColumnHeader = true;
+          }
+          continue;
+        }
+        if (t === "") { if (seenData) out.push(ln); continue; }
+        if (/^[\d.+-eE]/.test(t)) { seenData = true; out.push(ln); }
+      }
+      if (!hasHeader && !seenData) return text;
+      return out.join("\n");
+    }
+
     function ProgressBar(props) {
       var data = jsonFromBlock(props.block);
       var p = data && data.progress ? data.progress : data;
@@ -282,29 +323,31 @@ window.__ModuleLoader__.load({
             }
           }, VIEW_NAMES[vw.key] || vw.label);
         });
-        kids.push(React.createElement("div", { key: "threeview", style: { marginBottom: 16 } },
+        kids.push(React.createElement("div", { key: "threeview", style: { marginBottom: 14, padding: 12, border: "1px solid #e5e7eb", borderRadius: 12, background: "var(--dsw-alias-bg-layer-1, #ffffff)" } },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#1f2329" } }, "版图三视图"),
           React.createElement("div", { style: { display: "flex", marginBottom: 8 } }, tabs),
           React.createElement("img", {
             src: current.image,
             alt: current.label || "",
             onClick: function () { setLightbox(current); },
-            style: { maxWidth: "100%", maxHeight: 460, borderRadius: 8, border: "1px solid #e5e7eb", display: "block", cursor: "zoom-in", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }
+            style: { width: "100%", maxHeight: 460, objectFit: "contain", borderRadius: 8, border: "1px solid #eef0f3", display: "block", cursor: "zoom-in", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", background: "#fafafa" }
           }),
-          React.createElement("div", { style: { fontSize: 12, color: "#68707a", marginTop: 6 } }, current.label || "")
+          React.createElement("div", { style: { fontSize: 12, color: "#68707a", marginTop: 6 } }, VIEW_NAMES[current.key] || current.label || "")
         ));
       }
 
-      // 其它单张图。
+      // 其它单张图（含 target-chart → 默认标题「性能指标图」）。
       for (var imi = 0; imi < cls.images.length; imi++) {
         var im = cls.images[imi];
         (function (img) {
-          kids.push(React.createElement("div", { key: img.path || img.label || ("img" + imi), style: { marginBottom: 16 } },
+          var imgLabel = defaultLabel(img);
+          kids.push(React.createElement("div", { key: img.path || img.label || ("img" + imi), style: { marginBottom: 14, padding: 12, border: "1px solid #e5e7eb", borderRadius: 12, background: "var(--dsw-alias-bg-layer-1, #ffffff)" } },
+            React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#1f2329" } }, imgLabel),
             React.createElement("img", {
-              src: img.image, alt: img.label || "",
+              src: img.image, alt: imgLabel,
               onClick: function () { setLightbox(img); },
-              style: { maxWidth: "100%", maxHeight: 460, borderRadius: 8, border: "1px solid #e5e7eb", display: "block", cursor: "zoom-in" }
-            }),
-            React.createElement("div", { style: { fontSize: 12, color: "#68707a", marginTop: 6 } }, img.label || "")
+              style: { width: "100%", maxHeight: 460, objectFit: "contain", borderRadius: 8, border: "1px solid #eef0f3", display: "block", cursor: "zoom-in", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", background: "#fafafa" }
+            })
           ));
         })(im);
       }
@@ -312,9 +355,10 @@ window.__ModuleLoader__.load({
       // S2P / JSON / 文本。
       for (var ti = 0; ti < cls.texts.length; ti++) {
         var t = cls.texts[ti];
-        kids.push(React.createElement("div", { key: (t.path || t.label || ("t" + ti)), style: { marginBottom: 16 } },
-          React.createElement("div", { style: { fontSize: 12, fontWeight: 600, marginBottom: 6 } }, t.label || ""),
-          React.createElement("pre", { style: { fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 260, overflow: "auto", background: "#0f151a", color: "#e6e8eb", padding: 10, borderRadius: 8, margin: 0 } }, t.text)
+        var textBody = (t.kind === "s2p") ? sanitizeS2P(t.text) : t.text;
+        kids.push(React.createElement("div", { key: (t.path || t.label || ("t" + ti)), style: { marginBottom: 14, padding: 12, border: "1px solid #e5e7eb", borderRadius: 12, background: "var(--dsw-alias-bg-layer-1, #ffffff)" } },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#1f2329" } }, t.label || ""),
+          React.createElement("pre", { style: { fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 260, overflow: "auto", background: "#0f151a", color: "#e6e8eb", padding: 10, borderRadius: 8, margin: 0 } }, textBody)
         ));
       }
 
@@ -322,14 +366,14 @@ window.__ModuleLoader__.load({
       for (var fi = 0; fi < cls.files.length; fi++) {
         var f = cls.files[fi];
         if (f && f.error) {
-          kids.push(React.createElement("div", { key: f.path || ("f" + fi), style: { fontSize: 12, color: "#c0392b", padding: "6px 0" } }, (f.label || f.path) + " · 读取失败: " + f.error));
+          kids.push(React.createElement("div", { key: f.path || ("f" + fi), style: { marginBottom: 14, padding: 12, border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 12, color: "#c0392b" } }, (f.label || f.path) + " · 读取失败: " + f.error));
         } else if (f && f.kind === "gds") {
-          kids.push(React.createElement("div", { key: f.path || ("f" + fi), style: { display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 8, marginBottom: 8 } },
-            React.createElement("span", { style: { fontWeight: 600, fontSize: 13 } }, f.label || "GDS"),
-            React.createElement("span", { style: { fontSize: 12, color: "#68707a", wordBreak: "break-all" } }, f.path || "")
+          kids.push(React.createElement("div", { key: f.path || ("f" + fi), style: { marginBottom: 14, padding: 12, border: "1px solid #e5e7eb", borderRadius: 12, background: "var(--dsw-alias-bg-layer-1, #ffffff)" } },
+            React.createElement("span", { style: { fontWeight: 600, fontSize: 13, color: "#1f2329" } }, f.label || "GDS"),
+            React.createElement("div", { style: { fontSize: 12, color: "#68707a", wordBreak: "break-all", marginTop: 4 } }, f.path || "")
           ));
         } else {
-          kids.push(React.createElement("div", { key: f.path || ("f" + fi), style: { fontSize: 12, padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8, marginBottom: 8 } }, (f.label || "文件") + " · " + (f.kind || "unknown")));
+          kids.push(React.createElement("div", { key: f.path || ("f" + fi), style: { marginBottom: 14, padding: 12, border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 12 } }, (f.label || "文件") + " · " + (f.kind || "unknown")));
         }
       }
 

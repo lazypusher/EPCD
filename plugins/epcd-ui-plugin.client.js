@@ -35,6 +35,39 @@ function viewOf(img) {
   return null
 }
 
+// 净化 Touchstone（S2P）文本：保留表格头（S 参数格式行 + 列头）与频率行，
+// 去掉文件头部的 ewave 命令行 / 端口注释 / 路径等元信息。
+function sanitizeS2P(text) {
+  if (typeof text !== 'string') return text
+  var lines = text.split(/\r?\n/)
+  var out = []
+  var seenData = false
+  var hasHeader = false
+  var keptColumnHeader = false
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i]
+    var t = ln.trim()
+    if (t.charAt(0) === '#') {
+      if (!hasHeader) { out.push(ln); hasHeader = true }
+      continue
+    }
+    if (t.charAt(0) === '!') {
+      if (hasHeader && !keptColumnHeader && !seenData && /freq/i.test(t)) {
+        out.push(ln); keptColumnHeader = true
+      }
+      continue
+    }
+    if (t === '') { if (seenData) out.push(ln); continue }
+    if (/^[\d.+-eE]/.test(t)) {
+      seenData = true
+      out.push(ln)
+    }
+  }
+  // 若未识别到格式/数据行，回退原文（可能不是标准 S2P）
+  if (!hasHeader && !seenData) return text
+  return out.join('\n')
+}
+
 function ProgressBar(props) {
   var data = jsonFromBlock(props.block)
   var p = data && data.progress ? data.progress : data
@@ -70,6 +103,24 @@ function ProgressBar(props) {
   return React.createElement('div', { style: { padding: '10px 12px', borderRadius: 12, border: '1px solid #e5e7eb' } }, children)
 }
 
+// 统一卡片样式：加粗标题置顶 + 内容，图片细边框圆角阴影。
+var CARD_STYLE = { marginBottom: 12, padding: 12, border: '1px solid #e5e7eb', borderRadius: 12, background: '#ffffff' }
+var CARD_TITLE_STYLE = { fontSize: 13, fontWeight: 600, margin: '0 0 8px', color: '#1f2329' }
+var IMG_STYLE = { width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 8, border: '1px solid #eef0f3', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', background: '#fafafa', display: 'block' }
+var PRE_STYLE = { fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 240, overflow: 'auto', background: '#0f151a', color: '#e6e8eb', padding: 10, borderRadius: 8, margin: 0 }
+
+// 为 target-chart 类型的图提供默认标题：性能指标图
+function defaultLabel(a) {
+  if (a && a.label) return a.label
+  if (a && a.path) {
+    var bn = String(a.path).split(/[\\/]/).pop() || ''
+    if (/target-chart/i.test(bn)) return '性能指标图'
+    return bn
+  }
+  if (a && /target-chart/i.test(String(a.kind || ''))) return '性能指标图'
+  return '图像'
+}
+
 function ViewSwitcher(props) {
   var vws = props.views
   var state = React.useState(null)
@@ -91,10 +142,11 @@ function ViewSwitcher(props) {
       color: active ? '#ffffff' : '#333333', fontWeight: active ? 600 : 400
     } }, names[k])
   })
-  return React.createElement('div', { style: { marginBottom: 10 } },
-    React.createElement('div', { style: { display: 'flex', marginBottom: 6 } }, tabs),
-    cur ? React.createElement('img', { src: cur.image, alt: names[current], style: { maxWidth: '100%', maxHeight: 320, borderRadius: 8, border: '1px solid #e5e7eb', display: 'block' } }) : null,
-    cur ? React.createElement('div', { style: { fontSize: 12, marginTop: 4 } }, cur.label) : null
+  return React.createElement('div', { style: CARD_STYLE },
+    React.createElement('div', { style: CARD_TITLE_STYLE }, '版图三视图'),
+    React.createElement('div', { style: { display: 'flex', marginBottom: 8 } }, tabs),
+    cur ? React.createElement('img', { src: cur.image, alt: names[current], style: IMG_STYLE }) : null,
+    cur ? React.createElement('div', { style: { fontSize: 12, color: '#68707a', marginTop: 6 } }, names[current] || cur.label) : null
   )
 }
 
@@ -111,38 +163,36 @@ function ArtifactsView(props) {
     var a = arts[i]
     if (a && a.image) {
       var v = viewOf(a)
-      if (v) views.push({ key: v, label: a.label || a.path, image: a.image })
+      if (v) views.push({ key: v, label: defaultLabel(a), image: a.image })
       else images.push(a)
     } else others.push(a)
   }
   var kids = []
   if (views.length >= 2) kids.push(React.createElement(ViewSwitcher, { key: 'threeview', views: views }))
-  else if (views.length === 1) images.unshift({ label: views[0].label, image: views[0].image, path: '' })
+  else if (views.length === 1) images.unshift({ label: defaultLabel(views[0]), image: views[0].image, path: '' })
   for (var j = 0; j < images.length; j++) {
     var im = images[j]
-    kids.push(React.createElement('div', { key: (im.path || im.label || ('img' + j)), style: { marginBottom: 10 } },
-      React.createElement('img', { src: im.image, alt: im.label || '', style: { maxWidth: '100%', maxHeight: 320, borderRadius: 8, border: '1px solid #e5e7eb', display: 'block' } }),
-      React.createElement('div', { style: { fontSize: 12, marginTop: 4 } }, im.label || '')
+    kids.push(React.createElement('div', { key: (im.path || im.label || ('img' + j)), style: CARD_STYLE },
+      React.createElement('div', { style: CARD_TITLE_STYLE }, defaultLabel(im)),
+      React.createElement('img', { src: im.image, alt: defaultLabel(im), style: IMG_STYLE })
     ))
   }
   for (var k = 0; k < others.length; k++) {
     var o = others[k]
     var key = (o && o.path) ? o.path : ('o' + k)
     if (o && o.error) {
-      kids.push(React.createElement('div', { key: key, style: { fontSize: 12, color: '#c0392b', padding: '4px 0' } }, (o.label || key) + ' · 读取失败: ' + o.error))
+      kids.push(React.createElement('div', { key: key, style: Object.assign({}, CARD_STYLE, { color: '#c0392b', fontSize: 12 }) }, (o.label || key) + ' · 读取失败: ' + o.error))
     } else if (o && typeof o.text === 'string') {
-      kids.push(React.createElement('div', { key: key, style: { marginBottom: 10 } },
-        React.createElement('div', { style: { fontSize: 12, fontWeight: 600, marginBottom: 4 } }, o.label || ''),
-        React.createElement('pre', { style: { fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 240, overflow: 'auto', background: '#0f151a', color: '#e6e8eb', padding: 10, borderRadius: 8 } }, o.text)
+      var textContent = (o.kind === 's2p') ? sanitizeS2P(o.text) : o.text
+      kids.push(React.createElement('div', { key: key, style: CARD_STYLE },
+        React.createElement('div', { style: CARD_TITLE_STYLE }, o.label || ''),
+        React.createElement('pre', { style: PRE_STYLE }, textContent)
       ))
     } else {
-      kids.push(React.createElement('div', { key: key, style: { fontSize: 12, padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 6 } }, (o ? ((o.label || key) + ' · ' + o.kind) : '…')))
+      kids.push(React.createElement('div', { key: key, style: Object.assign({}, CARD_STYLE, { fontSize: 12 }) }, (o ? ((o.label || key) + ' · ' + o.kind) : '…')))
     }
   }
-  return React.createElement('div', { style: { padding: '10px 12px', borderRadius: 12, border: '1px solid #e5e7eb' } },
-    React.createElement('div', { style: { fontSize: 13, fontWeight: 600, marginBottom: 8 } }, '设计产物'),
-    kids
-  )
+  return React.createElement('div', { style: { padding: '4px 2px' } }, kids)
 }
 
 return {
