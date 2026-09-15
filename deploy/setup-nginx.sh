@@ -36,9 +36,9 @@ echo "  配置源:   $CONF_SRC"
 
 # ── 1. 安装 nginx（若未装）───────────────────────────────────────────────
 if command -v nginx >/dev/null 2>&1; then
-  echo "  [1/3] nginx 已安装：$(nginx -v 2>&1)"
+  echo "  [1/4] nginx 已安装：$(nginx -v 2>&1)"
 else
-  echo "  [1/3] 未找到 nginx，尝试安装…"
+  echo "  [1/4] 未找到 nginx，尝试安装…"
   if command -v dnf >/dev/null 2>&1; then
     dnf install -y nginx
   elif command -v yum >/dev/null 2>&1; then
@@ -46,28 +46,49 @@ else
   elif command -v apt-get >/dev/null 2>&1; then
     apt-get update && apt-get install -y nginx
   else
-    echo "  [1/3] 错误：无法识别包管理器（尝试 dnf/yum/apt-get）。请手动安装 nginx 后重跑。" >&2
+    echo "  [1/4] 错误：无法识别包管理器（尝试 dnf/yum/apt-get）。请手动安装 nginx 后重跑。" >&2
     exit 1
   fi
-  echo "  [1/3] nginx 已安装：$(nginx -v 2>&1)"
+  echo "  [1/4] nginx 已安装：$(nginx -v 2>&1)"
 fi
 
 # ── 2. 写入站点配置（幂等覆盖；只替换对外 listen 端口）───────────────────
 mkdir -p /etc/nginx/conf.d
 sed "s/listen 8080;/listen ${LISTEN_PORT};/" "$CONF_SRC" > "$CONF_DST"
-echo "  [2/3] 站点配置已写入 $CONF_DST"
+echo "  [2/4] 站点配置已写入 $CONF_DST"
 
-# ── 3. 校验并 reload（失败则不中断 nginx 现有服务）───────────────────────
+# ── 3. SELinux / 防火墙放行（CentOS/RHEL 反代出站连接会 502 的关键）───────
+# nginx 反代到 127.0.0.1:8091 属于主动出站 TCP 连接；SELinux Enforcing 下
+# httpd_can_network_connect 默认 off，会导致 connect() 报 Permission denied → 502。
+if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = "Enforcing" ]; then
+  if command -v setsebool >/dev/null 2>&1; then
+    setsebool -P httpd_can_network_connect 1
+    echo "  [3/4] SELinux: 已开启 httpd_can_network_connect（持久化）"
+  else
+    echo "  [3/4] 警告：SELinux Enforcing 但无 setsebool，请手动执行 setsebool -P httpd_can_network_connect 1" >&2
+  fi
+else
+  echo "  [3/4] SELinux 非 Enforcing（或未启用），跳过"
+fi
+
+# 若 firewalld 在跑，放行对外端口（幂等）
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+  firewall-cmd --permanent --add-port=${LISTEN_PORT}/tcp >/dev/null 2>&1 || true
+  firewall-cmd --reload >/dev/null 2>&1 || true
+  echo "  [3/4] firewalld: 已放行 ${LISTEN_PORT}/tcp"
+fi
+
+# ── 4. 校验并 reload（失败则不中断 nginx 现有服务）───────────────────────
 if nginx -t 2>/dev/null; then
   if systemctl is-active --quiet nginx 2>/dev/null; then
     systemctl reload nginx
-    echo "  [3/3] nginx reload 完成"
+    echo "  [4/4] nginx reload 完成"
   else
     systemctl enable --now nginx 2>/dev/null || nginx
-    echo "  [3/3] nginx 已启动"
+    echo "  [4/4] nginx 已启动"
   fi
 else
-  echo "  [3/3] 错误：nginx -t 校验失败，配置未生效，请检查 $CONF_DST" >&2
+  echo "  [4/4] 错误：nginx -t 校验失败，配置未生效，请检查 $CONF_DST" >&2
   exit 1
 fi
 
