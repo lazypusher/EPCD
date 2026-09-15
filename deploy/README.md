@@ -113,39 +113,51 @@ EPCD_HOST=0.0.0.0 npx @deepseek-ai/dsh --profile epcd --port 8091
 > 端点带 **loopback-only trust fence**（源码 `loopback.ts`：要求请求 `remoteAddress`
 > 是 127.0.0.1），因为 SSH 面板能在远程服务器执行任意命令。从局域网 IP 直接访问会
 > 报 `forbidden: loopback-only`，模型 tab 报 `settings are unavailable`。**正确做法是
-> 走 SSH 隧道**，让请求来源变成 loopback。
+> 用 Nginx 反代入口**（见下方「远程访问」章节），在服务器本机把请求收敛到 loopback。
 
 ---
 
-## 远程访问（SSH 隧道 + token，完整可用）
+## 远程访问（Nginx 反代入口，方案 A，推荐）
 
-三步走通「本机浏览器 → 远程 EPCD」，且 ssh tab / 模型 tab / 设置都能正常用：
+**问题**：直接内网访问 DSH 时，`@linxin666/dsh-ssh` 的 `/api/dsh-ssh/*` 端点带
+loopback-only trust fence（源码 `loopback.ts` 要求 socket 源地址 + Host 头都是
+127/8 或 ::1，且永不信任 X-Forwarded-For、无白名单），导致 **SSH tab 报
+`forbidden: loopback-only`**。旧方案（每用户手动 SSH 隧道）麻烦。
 
-**① 服务器端启动**（登录部署服务器后）：
+**方案 A**：在**部署服务器本机**用 Nginx 做单一入口，把请求 proxy_pass 回
+`127.0.0.1:8091`（DSH 仍绑 0.0.0.0），这样：
+
+- socket 源地址 = 127.0.0.1 → 满足 fence 第一条件（对所有请求成立）
+- `/api/dsh-ssh/` 路由额外把 Host 头改成 `127.0.0.1:8091` → 满足 fence 第二条件
+- 页面/其余路由保持原始 Host（内网 IP），DSH 绑 0.0.0.0 时 web-app 自动信任 LAN
+  IP（`resolveLanTrust`），token 鉴权照常工作
+
+用户只需访问 `http://<内网IP>:8080`，无需手动开任何隧道。
+
+### 部署（在服务器上、仓库根执行）
 
 ```bash
+# 1. 部署 profile（若还没部署）
+bash deploy/install-dsh-agent.sh
+
+# 2. 启动 DSH（绑 0.0.0.0，但对外只由 Nginx 收敛）
 cd ~/epcd && EPCD_HOST=0.0.0.0 npx @deepseek-ai/dsh --profile epcd --port 8091 --no-open
+
+# 3. 配置 Nginx 反代入口（自动装 nginx + 写站点配置 + reload）
+sudo bash deploy/setup-nginx.sh
 ```
 
-启动后终端会打印一行，记下 `token=XXXX` 那段（每次启动都变）。
+### 访问
 
-**② 本机建 SSH 隧道**（另开一个窗口，保持运行）：
+浏览器打开 `http://<服务器内网IP>:8080`，首次带 DSH 启动终端打印的 `?token=XXXX`
+（或直接访问，DSH 会要求 token）。SSH tab、模型 tab、设置均正常，无需 SSH 隧道。
 
-```bash
-ssh -L 8092:127.0.0.1:8091 eada@192.168.20.109 -N
-```
+### 配置说明
 
-（把本机 8092 映射到远程 127.0.0.1:8091；经隧道后远程看到的请求来源是 loopback，绕开 loopback-only fence）
-
-**③ 本机浏览器访问**（把 `XXXX` 换成第①步的 token）：
-
-```
-http://127.0.0.1:8092/?token=XXXX
-```
-
-首次带 `?token=` 访问，DSH 校验后自动签发 cookie 并跳转首页。
-
-> 注：本机 8092 是隧道端口，用 8092 而非 8091 是为了避开本机可能已在跑的本地 EPCD。
+- **对外端口**：默认 `8080`，用 `EPCD_NGINX_PORT` 环境变量覆盖（脚本会改写配置）。
+- **DSH 上游**：固定 `127.0.0.1:8091`（loopback fence 要求）。若 DSH 端口不是 8091，
+  改 `deploy/nginx/epcd-agent.conf` 里两处 `8091`。
+- **TLS/认证**：DSH 自身不带鉴权与 TLS，Nginx 层务必加 HTTPS + 来源限制，见下方安全警告。
 
 ---
 
