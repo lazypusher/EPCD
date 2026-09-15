@@ -175,6 +175,66 @@ def _step_or_multiple_of(prop: dict) -> float | None:
     return multiple if multiple is not None and multiple > 0 else None
 
 
+# ---------------------------------------------------------------------------
+# 跨参数几何约束（成对约束，模板元数据之外的控制侧硬规则）
+# ---------------------------------------------------------------------------
+# stack 家族（stack_inductor / stack_inductor_overlapped）是上下两层金属同心
+# 堆叠：两层线圈宽度必须接近，否则几何无法闭合 → 服务端 GDS 生成报
+# 「Layer1/Layer2 Width is too great, decrease the greater one or increase spacing」。
+# 实测（2026-09-14，demo_revised.ptxt，真实 EM）：
+#   |layer1Width - layer2Width| ≤ 3  → GDS 正常生成（18/15、18/16、18/18…全成功）
+#   |layer1Width - layer2Width| ≥ 4  → GDS_NOT_FOUND（18/14、18/6、20/6、19/14…全失败）
+# 且该阈值与 innerRadius（22~90）、numOfTurns（3~7）、trackSpace（0.85~4.5）无关，
+# 是全局稳定约束。约束仅作用于含 layer1Width/layer2Width 参数对的模板（stack 家族）。
+
+_STACK_LAYER_WIDTH_MAX_ABS_DIFF = 3.0
+# 层宽差还应随 trackSpace 收紧：间距越小，两层层宽越需要接近，否则上下两层几何无法闭合。
+# 实测（2026-09-14）：diff ≤ trackSpace 的 2 倍，是覆盖全部已知样本的安全界。
+#   例：ts=0.73 时 diff=1.12 成功、diff=2.32 失败（2*0.73=1.46 恰在两者之间）。
+_STACK_LAYER_DIFF_TO_SPACE_RATIO = 2.0
+
+
+def stack_layer_width_violation(params: dict) -> tuple[str, str] | None:
+    """Return (why, detail) when the stack layer-width pairing constraint is violated.
+
+    Only fires when the candidate carries BOTH ``layer1Width`` and ``layer2Width``
+    (stack family); other templates are unaffected. The stack geometry requires the
+    two metal layers to be near-equal width — a difference of >= 4 um (or, more
+    tightly, exceeding 2× the track space) makes the concentric two-layer winding
+    non-manifold and fails GDS generation. The two conditions are independent:
+
+      1. ``|layer1Width - layer2Width| > 3``            (absolute mismatch)
+      2. ``|layer1Width - layer2Width| > 2 * trackSpace`` (spacing-relative mismatch)
+    """
+    if not isinstance(params, dict):
+        return None
+    if "layer1Width" not in params or "layer2Width" not in params:
+        return None
+    w1 = params.get("layer1Width")
+    w2 = params.get("layer2Width")
+    try:
+        w1f = float(w1)
+        w2f = float(w2)
+    except (TypeError, ValueError):
+        return None
+    diff = abs(w1f - w2f)
+    if diff > _STACK_LAYER_WIDTH_MAX_ABS_DIFF:
+        return ("stack-layer-width-mismatch",
+                f"|layer1Width - layer2Width| = {diff:.3f} > "
+                f"{_STACK_LAYER_WIDTH_MAX_ABS_DIFF} (stack 两层层宽必须接近)")
+    ts = params.get("trackSpace")
+    try:
+        tsf = float(ts)
+    except (TypeError, ValueError):
+        return None
+    if tsf > 0 and diff > _STACK_LAYER_DIFF_TO_SPACE_RATIO * tsf:
+        return ("stack-layer-width-mismatch",
+                f"|layer1Width - layer2Width| = {diff:.3f} > "
+                f"{_STACK_LAYER_DIFF_TO_SPACE_RATIO} * trackSpace = {_STACK_LAYER_DIFF_TO_SPACE_RATIO * tsf:.3f} "
+                f"(间距过小时两层层宽需更接近)")
+    return None
+
+
 def parse_real_parameter_schema(schema: dict) -> ParsedSpace:
     """Parse the nested basic/opt/synth parameterSchema of real builds.
 

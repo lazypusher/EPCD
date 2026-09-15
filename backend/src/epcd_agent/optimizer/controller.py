@@ -18,7 +18,8 @@ from ..exitcodes import LOOP_TRANSIENT_EXIT_CODES
 from ..tools.base import ToolContext
 from ..tools.read import epcd_job
 from ..tools.write import epcd_run
-from .space import ParamSpec, normalize_candidate, to_optuna_distributions
+from .space import (ParamSpec, normalize_candidate, to_optuna_distributions,
+                     stack_layer_width_violation)
 from .tpe_settings import DEFAULT_STARTUP_TRIALS
 
 TERMINAL_JOB_STATUSES = frozenset({"succeeded", "failed", "canceled"})
@@ -28,6 +29,9 @@ _TPE_SEED = 20260817
 # 的下限（能让"好组"凑出 2 个点、KDE 拟合不退化），困难模板由模板表上调到 10。
 _TPE_STARTUP_TRIALS = DEFAULT_STARTUP_TRIALS
 _CONSECUTIVE_FAILURE_LIMIT = 2
+# 约束重采样上限：违反几何约束时在同一轮内最多重试这么多次，超限则放弃约束
+# 直接提交（让服务端按自身规则报错），避免极端采样空间下死循环。
+_MAX_REROLL = 50
 
 
 @dataclass(frozen=True)
@@ -123,6 +127,7 @@ class OptimizationController:
         self._startup_trials = startup_trials
         self._cancel_requested = False
         self._failures = 0
+        self._filtered = 0
         self._rounds: list[RoundRecord] = []
         self._best_job_id: str | None = None
         self._best_cost: float | None = None
@@ -166,7 +171,8 @@ class OptimizationController:
         self._task_update(status="running")
         started = time.monotonic()
         stop_reason = "budget_rounds"
-        for round_no in range(1, self._budget.max_rounds + 1):
+        round_no = 0
+        while round_no < self._budget.max_rounds:
             self._probe_cancel()
             if self._cancel_requested:
                 stop_reason = "canceled"
@@ -174,9 +180,22 @@ class OptimizationController:
             if time.monotonic() - started > self._budget.max_wall_seconds:
                 stop_reason = "budget_wall"
                 break
-            request_id = f"{self._prefix}-{round_no}"
+            # 跨参数几何约束（硬规则，提交前过滤）：stack 家族两层层宽必须接近。
+            # 违反则把该 trial 记为 FAIL 喂回 TPE（让它学习避开无效组合），并**在同一轮内
+            # 重新采样**，直到采到合法组合——不推进 round_no、不消耗 max_rounds 预算、
+            # 不计入 rounds。这样「N 轮」始终等于「N 次有效仿真」，约束只用于把无效采样
+            # 重新 roll，不会因此牺牲有效探索预算。
             trial = study.ask()
             params = self._suggest_params(trial)
+            rerolls = 0
+            while stack_layer_width_violation(params) and rerolls < _MAX_REROLL:
+                study.tell(trial, state=optuna.trial.TrialState.FAIL)
+                self._filtered += 1
+                rerolls += 1
+                trial = study.ask()
+                params = self._suggest_params(trial)
+            round_no += 1
+            request_id = f"{self._prefix}-{round_no}"
             job_id = self._submit(params, request_id)
             status = self._poll(job_id)
             if status == "canceled":

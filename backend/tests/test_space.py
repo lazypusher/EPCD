@@ -8,6 +8,7 @@ from epcd_agent.optimizer.space import (
     parse_real_parameter_schema,
     parse_synth_targets,
     normalize_candidate,
+    stack_layer_width_violation,
     to_optuna_distributions,
 )
 
@@ -293,3 +294,38 @@ def test_normalize_candidate_aligns_to_step():
     assert normalize_candidate({"turns": 3.17, "w": 4.6}, specs) == {"turns": 3.25, "w": 4.6}
     assert normalize_candidate({"turns": 0.0}, specs) == {"turns": 0.25}  # clipped back in
     assert normalize_candidate({"turns": 9.0}, specs) == {"turns": 8.0}   # clipped at high
+
+
+# ── stack 家族两层层宽差硬约束（实测 2026-09-14，demo_revised.ptxt 真实 EM）──
+# 两层同心堆叠金属要求宽度接近，约束是二维的：
+#   1) |layer1Width - layer2Width| > 3  → 违规
+#   2) |layer1Width - layer2Width| > 2 * trackSpace → 违规（间距越小越需接近）
+# 任一触发即 GDS 生成失败（"Width is too great ... or increase spacing"）。
+
+def test_stack_layer_width_violation_absolute_bound():
+    assert stack_layer_width_violation({"layer1Width": 18, "layer2Width": 15, "trackSpace": 2}) is None     # diff 3 OK
+    assert stack_layer_width_violation({"layer1Width": 18, "layer2Width": 18, "trackSpace": 2}) is None     # diff 0
+    assert stack_layer_width_violation({"layer1Width": 20, "layer2Width": 20, "trackSpace": 2}) is None     # equal, wide
+    assert stack_layer_width_violation({"layer1Width": 18, "layer2Width": 14, "trackSpace": 2}) is not None # diff 4 → violated
+    assert stack_layer_width_violation({"layer1Width": 20, "layer2Width": 6, "trackSpace": 4}) is not None  # diff 14
+
+
+def test_stack_layer_width_violation_spacing_relative_bound():
+    # 间距越小，层宽差阈值越严：ts=0.73 时 diff=1.12 成功（≤1.46）、diff=2.32 失败（>1.46）。
+    assert stack_layer_width_violation({"layer1Width": 14.33, "layer2Width": 13.21, "trackSpace": 0.73}) is None     # diff 1.12 ≤ 1.46 OK
+    assert stack_layer_width_violation({"layer1Width": 10.84, "layer2Width": 13.16, "trackSpace": 0.73}) is not None # diff 2.32 > 1.46 violated
+    # 大间距放宽：ts=4.36 时 diff=2.51 仍 OK（2*4.36=8.72）。
+    assert stack_layer_width_violation({"layer1Width": 15.81, "layer2Width": 13.30, "trackSpace": 4.36}) is None
+
+
+def test_stack_layer_width_violation_ignores_non_stack_params():
+    # 非 stack 模板（无 layer1Width/layer2Width 对）不受影响。
+    assert stack_layer_width_violation({"trackWidth": 10, "numOfTurns": 3}) is None
+    assert stack_layer_width_violation({"layer1Width": 20}) is None  # 缺 layer2Width
+    assert stack_layer_width_violation({"layer2Width": 20}) is None  # 缺 layer1Width
+    assert stack_layer_width_violation({}) is None
+    assert stack_layer_width_violation(None) is None
+    # 非数值不误报
+    assert stack_layer_width_violation({"layer1Width": "Auto", "layer2Width": "Auto"}) is None
+    # 缺 trackSpace 时只查绝对边界（不误报）
+    assert stack_layer_width_violation({"layer1Width": 18, "layer2Width": 15}) is None

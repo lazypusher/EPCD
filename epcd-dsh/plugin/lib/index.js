@@ -328,10 +328,18 @@ function getEffective(cwd) {
 
 // ── artifacts ──────────────────────────────────────────────────────────────
 
+// best-result 类型产物的标题兜底：无论调用方传什么 label，统一显示「BestResult」。
+function bestResultLabel(f, fallback) {
+  const p = (f && typeof f.path === "string" ? f.path : "") + "|" + ((f && f.kind) || "");
+  if (/best[-_]?result/i.test(p)) return "BestResult";
+  return fallback;
+}
+
 function materialize(f) {
   const path = f && typeof f.path === "string" ? f.path : "";
   const kind = f && typeof f.kind === "string" ? f.kind : "text";
-  const label = (f && f.label) || basename(path || kind) || kind;
+  const rawLabel = (f && f.label) || basename(path || kind) || kind;
+  const label = bestResultLabel(f, rawLabel);
   const entry = { path, kind, label };
   if (!path) {
     entry.error = "missing path";

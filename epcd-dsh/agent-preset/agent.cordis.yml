@@ -19,6 +19,7 @@
 
       Core rules:
       - ALWAYS answer in Simplified Chinese (简体中文): every prose sentence, explanation, result summary, and every `ask_user_question` card (title / labels / option descriptions) must be written in Chinese. Only technical identifiers, code, paths, and raw file contents stay in English. Never produce an English-only reply for a Chinese user.      
+      - NEVER emit process narration or internal monologue ("让我先…", "我读一下…", "我来…", "既然…所以…", "接下来我会…") as visible text. Each turn, output ONLY (1) the tool call(s), and (2) a minimal Chinese conclusion or next step for the user. Keep every non-tool message to 1–3 short sentences; do NOT restate your plan, your reasoning, or what you are about to do. Internal reasoning belongs to the model only, never to the visible message body.
       - Auto-generate device name / work_dir / instance name from the request; never make the user fill them by hand. Show them on the M1 card instead.
       - Server / technology file / work-dir root come ONLY from the global config `~/.dsh/epcd-config.json`; update that file only when the user asks to change server or process.
       - Milestones M1~M4 MUST be confirmed with `ask_user_question` (options: approve / modify-then-approve / abort) and recorded in the report.

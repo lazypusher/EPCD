@@ -24,41 +24,40 @@ Write-Host "== EPCD 形态 A 部署 ==" -ForegroundColor Cyan
 Write-Host "  仓库根: $RepoRoot"
 Write-Host "  DSH home: $DshHome"
 
-# ── 1. profile：权威源 = plugins/epcd-ui-persist/deploy/（完整 cordis.patch.yml
-#     含 epcd-ui-plugin 挂载 + 存储隔离 + branding）+ platform-dsh/profile/ 的
-#     favicon 与 pnpm-workspace（deploy 目录缺这两份）。
-#     注：platform-dsh/profile/cordis.patch.yml 是旧版（缺 epcd-ui-plugin insert
-#     与存储隔离），不要用它——否则部署出的 profile 没有 UI 插件。
+# ── 1. profile：权威源 = epcd-dsh/plugin/deploy/（完整 cordis.patch.yml
+#     含 epcd-ui-plugin 挂载 + 存储隔离 + branding + favicon/pnpm-workspace + logo）。
 $ProfileDst = Join-Path $DshHome 'profiles\epcd'
-$DeploySrc  = Join-Path $RepoRoot 'plugins\epcd-ui-persist\deploy'
-$PfpSrc     = Join-Path $RepoRoot 'platform-dsh\profile'
+$DeploySrc  = Join-Path $RepoRoot 'epcd-dsh\plugin\deploy'
 New-Item -ItemType Directory -Force -Path $ProfileDst | Out-Null
-# 完整版 cordis.patch.yml / epcd-brand.mjs（覆盖旧版）
+# 完整版 cordis.patch.yml / epcd-brand.mjs / epcd-ui-lock.mjs（覆盖旧版）
 Copy-Item (Join-Path $DeploySrc 'cordis.patch.yml') $ProfileDst -Force
 Copy-Item (Join-Path $DeploySrc 'epcd-brand.mjs')   $ProfileDst -Force
+Copy-Item (Join-Path $DeploySrc 'epcd-ui-lock.mjs') $ProfileDst -Force
+# 左上角品牌 logo（epcd-brand.mjs 以 base64 内联读取，需随 profile 一起落地）
+Copy-Item (Join-Path $DeploySrc 'epcd-logo.png')    $ProfileDst -Force
 # profile-package.json 改名为 package.json（含 epcd-ui-plugin + dsh-ssh 依赖）
 Copy-Item (Join-Path $DeploySrc 'profile-package.json') (Join-Path $ProfileDst 'package.json') -Force
-# favicon + pnpm-workspace（deploy 目录没有，从 platform-dsh/profile 补）
-Copy-Item (Join-Path $PfpSrc 'epcd-favicon.svg')    $ProfileDst -Force
-Copy-Item (Join-Path $PfpSrc 'pnpm-workspace.yaml') $ProfileDst -Force
+# favicon + pnpm-workspace
+Copy-Item (Join-Path $DeploySrc 'epcd-favicon.svg')    $ProfileDst -Force
+Copy-Item (Join-Path $DeploySrc 'pnpm-workspace.yaml') $ProfileDst -Force
 Write-Host "  [1/4] profile -> $ProfileDst（完整版 cordis.patch + branding + package.json）"
 
 # ── 2. agent preset（persona + 精简工具集）─────────────────────────────────
-$PresetSrc = Join-Path $RepoRoot 'platform-dsh\agent-preset'
+$PresetSrc = Join-Path $RepoRoot 'epcd-dsh\agent-preset'
 $PresetDst = Join-Path $DshHome '.agent-presets\epcd'
 New-Item -ItemType Directory -Force -Path $PresetDst | Out-Null
 Copy-Item (Join-Path $PresetSrc '*') $PresetDst -Force -Recurse
 Write-Host "  [2/4] agent preset -> $PresetDst"
 
 # ── 3. EPCD UI 插件：软链部署（单一事实源，幂等）────────────────────────────
-#     插件采用「单一事实源 + 软链」架构：canonical 在 plugins/epcd-ui-persist/lib/，
+#     插件采用「单一事实源 + 软链」架构：canonical 在 epcd-dsh/plugin/lib/，
 #     而 profile 的 packages/epcd-ui-plugin/lib/ 与 node_modules/epcd-ui-plugin/lib/
 #     下的 index.js/client.js 都是软链指向 canonical，改 canonical 即刻生效、无需三处同步。
 #     package.json 不是软链，三处各持一份实体（内容一致），此处用 Copy-Item 同步。
 #     幂等：重复执行不覆盖已有软链、不产生 "same file" 警告、不破坏 pnpm 布局。
 #     前置：Windows 创建 SymbolicLink 需管理员权限或开发者模式（普通用户会报
 #     "需要管理员权限"）；请以管理员身份运行本脚本。
-$PluginSrc = Join-Path $RepoRoot 'plugins\epcd-ui-persist'
+$PluginSrc = Join-Path $RepoRoot 'epcd-dsh\plugin'
 $LibSrc    = Join-Path $PluginSrc 'lib'
 # 把 canonical 的 lib 文件以「软链」镜像到目标目录（幂等：已是正确软链则跳过，否则修正）。
 function Relink-EpcdLib {

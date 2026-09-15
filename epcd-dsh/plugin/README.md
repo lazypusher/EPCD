@@ -1,4 +1,4 @@
-# EPCD 专用 profile 部署说明
+﻿# EPCD 专用 profile 部署说明
 
 把 EPCD 器件设计做成一个**独立、锁定的专用 Agent**（独立端口、不可切换模式、存储隔离）。
 
@@ -15,7 +15,7 @@
 
 ## 目录布局（单一事实源，软链）
 
-- **唯一源码（canonical）**：`plugins/epcd-ui-persist/lib/{index.js, client.js}` ← 改代码只改这里。
+- **唯一源码（canonical）**：`epcd-dsh/plugin/lib/{index.js, client.js}` ← 改代码只改这里。
 - **DSH 实际加载的插件副本**：`~/.dsh/profiles/epcd/packages/epcd-ui-plugin/lib/`
   与 `~/.dsh/profiles/epcd/node_modules/epcd-ui-plugin/lib/` —— 这两个目录下的
   `index.js`/`client.js` 是**软链（symlink）**，指向 canonical 源码。
@@ -33,7 +33,7 @@
 
 | 步骤 | 位置 |
 |------|------|
-| 1. 插件持久化 | canonical `plugins/epcd-ui-persist/` + 软链到 `~/.dsh/profiles/epcd/packages/epcd-ui-plugin/lib/`（DSH 解析）+ `node_modules/epcd-ui-plugin/lib/`；profile `package.json` 里 `dependencies` 加 `file:./packages/epcd-ui-plugin` |
+| 1. 插件持久化 | canonical `epcd-dsh/plugin/` + 软链到 `~/.dsh/profiles/epcd/packages/epcd-ui-plugin/lib/`（DSH 解析）+ `node_modules/epcd-ui-plugin/lib/`；profile `package.json` 里 `dependencies` 加 `file:./packages/epcd-ui-plugin` |
 | 2. 锁定 preset | `~/.dsh/profiles/epcd/cordis.patch.yml` → `agent-presets.config`: `default: epcd` + `roots:[profile/presets]` + `includeUserRoot:false`；`presets/epcd` 是指向 `~/.dsh/.agent-presets/epcd` 的 **junction**（单一来源，无拷贝漂移） |
 | 3. 清除 settings 覆盖 | `~/.dsh/settings.yaml` 已删除 `agent-presets.default: standard`（该覆盖曾把 epcd 拉回 standard） |
 | 4. 存储隔离 | `cordis.patch.yml` → `session-persistence-jsonl.root` + `storage-json.root` 指向 `profiles/epcd/data/{sessions,storages}`（workspace 记录存于 storageDomain，随 storage-json 一并隔离） |
@@ -51,7 +51,7 @@ dsh.cmd --profile epcd --port 8091
 
 ## 维护注意（改代码只改一处，改完重启）
 
-- **改插件代码**：只改 `plugins/epcd-ui-persist/lib/{index.js, client.js}`（canonical）。
+- **改插件代码**：只改 `epcd-dsh/plugin/lib/{index.js, client.js}`（canonical）。
   `packages/` 与 `node_modules/` 下的同名文件是软链，会自动指向新内容，**无需再手动同步**。
 - **改 `package.json`**：`package.json` 不是软链（三处各有一份，内容一致）。若改了插件名/依赖/
   `exports`，需分别同步三处 `package.json`，再重启。
@@ -65,6 +65,6 @@ dsh.cmd --profile epcd --port 8091
 
 ## 历史教训（为什么上一条那么重要）
 
-曾因改 `plugins/epcd-ui-persist/`（canonical）却没同步到 `packages/epcd-ui-plugin/`（DSH 实际加载），
+曾因改 `epcd-dsh/plugin/`（canonical）却没同步到 `packages/epcd-ui-plugin/`（DSH 实际加载），
 导致面板改动「看起来不生效」——因为改的是两份独立文件里的错误那一份。已通过软链根治：三处现在
 是同一物理文件，从机制上杜绝「改错副本」。

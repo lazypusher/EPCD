@@ -17,3 +17,5 @@ dist/
 # ç»“æ„ï¼šruns/epcd-agent-session.sqlite3ï¼ˆå…¨å±€å®¡è®¡åº“ï¼‰+ runs/<ä»»åŠ¡å>/artifacts|opt-input
 runs/
 *.opt-input-*.json
+# EPCD ÓÅ»¯ÊäÈëÖĞ¼ä²úÎï
+opt-input.json

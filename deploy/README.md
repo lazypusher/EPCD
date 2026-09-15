@@ -12,9 +12,9 @@
 | 依赖 | 来源 | 是否入 git |
 |------|------|-----------|
 | DSH 运行时 | `@deepseek-ai/dsh` 0.1.5-rc.1（内置右侧 sidebar）+ `@linxin666/dsh-ssh` | —（外部 install） |
-| profile | **`plugins/epcd-ui-persist/deploy/`（权威）+ `platform-dsh/profile/`（favicon/pnpm-workspace）** | ✅ 入库 |
-| agent preset | `platform-dsh/agent-preset/*` | ✅ 入库 |
-| UI 插件 | `plugins/epcd-ui-persist/{package.json,lib/*}` | ✅ 入库 |
+| profile | **`epcd-dsh/plugin/deploy/`（权威，含 cordis.patch / branding / favicon / pnpm-workspace / logo）** | ✅ 入库 |
+| agent preset | `epcd-dsh/agent-preset/*` | ✅ 入库 |
+| UI 插件 | `epcd-dsh/plugin/{package.json,lib/*}` | ✅ 入库 |
 | 配置 | `epcd-config.json`（ssh/pkg/technology/workDirRoot） | ✅ 入库（本项目约定） |
 | 编排 skill | `.dsh/skills/epcd-agent-flow/` | ✅ 入库 |
 
@@ -34,10 +34,12 @@
   会**优先复用全局旧版**而不是拉最新——升级后务必先
   `npm i -g @deepseek-ai/dsh@0.1.5-rc.1`，或显式写 `npx @deepseek-ai/dsh@0.1.5-rc.1`。
 
-> ⚠ **profile 权威源是 `plugins/epcd-ui-persist/deploy/`，不是 `platform-dsh/profile/`。**
-> `platform-dsh/profile/cordis.patch.yml` 是旧版：缺 `epcd-ui-plugin` insert 与存储隔离，
-> 用它部署出的 profile **没有产物图库/进度条 UI 插件**。完整版在 deploy 目录，
-> 两个安装脚本（`.ps1` / `.sh`）均已按权威源组合复制。
+> ⚠ **profile 权威源只有一个：`epcd-dsh/plugin/deploy/`。**
+> 该目录包含完整版 profile 的全部文件（cordis.patch.yml / epcd-brand.mjs /
+> epcd-ui-lock.mjs / epcd-logo.png / epcd-favicon.svg / pnpm-workspace.yaml /
+> profile-package.json），两个安装脚本（`.ps1` / `.sh`）均从此目录整体复制。
+> 旧的 `platform-dsh/profile/` 目录已删除（其中的 cordis.patch.yml / epcd-brand.mjs
+> 是缺 UI 插件与存储隔离的历史版本）。
 
 ---
 
@@ -57,9 +59,9 @@ bash deploy/install-dsh-agent.sh
 
 两个脚本对称，都会依次：
 
-1. 复制 profile（权威源 `plugins/epcd-ui-persist/deploy/` 的 cordis.patch.yml /
-   epcd-brand.mjs / profile-package.json + `platform-dsh/profile/` 的 favicon /
-   pnpm-workspace）→ `~/.dsh/profiles/epcd/`
+1. 复制 profile（权威源 `epcd-dsh/plugin/deploy/` 的 cordis.patch.yml /
+   epcd-brand.mjs / epcd-ui-lock.mjs / epcd-logo.png / epcd-favicon.svg /
+   pnpm-workspace.yaml / profile-package.json）→ `~/.dsh/profiles/epcd/`
 2. 复制 agent preset → `~/.dsh/.agent-presets/epcd/`
 3. 同步 UI 插件 → `packages/epcd-ui-plugin/` + `node_modules/epcd-ui-plugin/`（三处同步）
 4. 安装树外依赖 `@linxin666/dsh-ssh`（右侧 sidebar 由 DSH 0.1.5 内置，无需第三方）
@@ -154,17 +156,19 @@ http://127.0.0.1:8092/?token=XXXX
 ```powershell
 $p = "$env:USERPROFILE\.dsh\profiles\epcd"
 New-Item -ItemType Directory -Force $p | Out-Null
-Copy-Item plugins\epcd-ui-persist\deploy\cordis.patch.yml   $p -Force
-Copy-Item plugins\epcd-ui-persist\deploy\epcd-brand.mjs     $p -Force
-Copy-Item plugins\epcd-ui-persist\deploy\profile-package.json $p\package.json -Force
-Copy-Item platform-dsh\profile\epcd-favicon.svg             $p -Force
-Copy-Item platform-dsh\profile\pnpm-workspace.yaml          $p -Force
-Copy-Item platform-dsh\agent-preset\*   "$env:USERPROFILE\.dsh\.agent-presets\epcd\" -Force -Recurse
+Copy-Item epcd-dsh\plugin\deploy\cordis.patch.yml   $p -Force
+Copy-Item epcd-dsh\plugin\deploy\epcd-brand.mjs     $p -Force
+Copy-Item epcd-dsh\plugin\deploy\epcd-ui-lock.mjs   $p -Force
+Copy-Item epcd-dsh\plugin\deploy\epcd-logo.png      $p -Force
+Copy-Item epcd-dsh\plugin\deploy\profile-package.json $p\package.json -Force
+Copy-Item epcd-dsh\plugin\deploy\epcd-favicon.svg   $p -Force
+Copy-Item epcd-dsh\plugin\deploy\pnpm-workspace.yaml $p -Force
+Copy-Item epcd-dsh\agent-preset\*   "$env:USERPROFILE\.dsh\.agent-presets\epcd\" -Force -Recurse
 New-Item -ItemType Directory -Force "$p\packages\epcd-ui-plugin","$p\node_modules\epcd-ui-plugin" | Out-Null
-Copy-Item plugins\epcd-ui-persist\package.json "$p\packages\epcd-ui-plugin\" -Force
-Copy-Item plugins\epcd-ui-persist\lib          "$p\packages\epcd-ui-plugin\" -Recurse -Force
-Copy-Item plugins\epcd-ui-persist\package.json "$p\node_modules\epcd-ui-plugin\" -Force
-Copy-Item plugins\epcd-ui-persist\lib          "$p\node_modules\epcd-ui-plugin\" -Recurse -Force
+Copy-Item epcd-dsh\plugin\package.json "$p\packages\epcd-ui-plugin\" -Force
+Copy-Item epcd-dsh\plugin\lib          "$p\packages\epcd-ui-plugin\" -Recurse -Force
+Copy-Item epcd-dsh\plugin\package.json "$p\node_modules\epcd-ui-plugin\" -Force
+Copy-Item epcd-dsh\plugin\lib          "$p\node_modules\epcd-ui-plugin\" -Recurse -Force
 node "$env:APPDATA\npm\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile epcd add "@linxin666/dsh-ssh"
 ```
 
@@ -173,16 +177,18 @@ node "$env:APPDATA\npm\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profil
 ```bash
 p="$HOME/.dsh/profiles/epcd"
 mkdir -p "$p" "$HOME/.dsh/.agent-presets/epcd" "$p/packages/epcd-ui-plugin" "$p/node_modules/epcd-ui-plugin"
-cp plugins/epcd-ui-persist/deploy/cordis.patch.yml       "$p/"
-cp plugins/epcd-ui-persist/deploy/epcd-brand.mjs         "$p/"
-cp plugins/epcd-ui-persist/deploy/profile-package.json   "$p/package.json"
-cp platform-dsh/profile/epcd-favicon.svg                 "$p/"
-cp platform-dsh/profile/pnpm-workspace.yaml              "$p/"
-cp -r platform-dsh/agent-preset/.  "$HOME/.dsh/.agent-presets/epcd/"
-cp plugins/epcd-ui-persist/package.json "$p/packages/epcd-ui-plugin/"
-cp -r plugins/epcd-ui-persist/lib       "$p/packages/epcd-ui-plugin/"
-cp plugins/epcd-ui-persist/package.json "$p/node_modules/epcd-ui-plugin/"
-cp -r plugins/epcd-ui-persist/lib       "$p/node_modules/epcd-ui-plugin/"
+cp epcd-dsh/plugin/deploy/cordis.patch.yml       "$p/"
+cp epcd-dsh/plugin/deploy/epcd-brand.mjs         "$p/"
+cp epcd-dsh/plugin/deploy/epcd-ui-lock.mjs       "$p/"
+cp epcd-dsh/plugin/deploy/epcd-logo.png          "$p/"
+cp epcd-dsh/plugin/deploy/profile-package.json   "$p/package.json"
+cp epcd-dsh/plugin/deploy/epcd-favicon.svg       "$p/"
+cp epcd-dsh/plugin/deploy/pnpm-workspace.yaml    "$p/"
+cp -r epcd-dsh/agent-preset/.  "$HOME/.dsh/.agent-presets/epcd/"
+cp epcd-dsh/plugin/package.json "$p/packages/epcd-ui-plugin/"
+cp -r epcd-dsh/plugin/lib       "$p/packages/epcd-ui-plugin/"
+cp epcd-dsh/plugin/package.json "$p/node_modules/epcd-ui-plugin/"
+cp -r epcd-dsh/plugin/lib       "$p/node_modules/epcd-ui-plugin/"
 dsh plugin --profile epcd add "@linxin666/dsh-ssh"
 # 或（未装全局 dsh 时；本质是在 profile 目录跑 pnpm，故需 pnpm 在 PATH）
 npx @deepseek-ai/dsh plugin --profile epcd add "@linxin666/dsh-ssh"
@@ -192,7 +198,7 @@ npx @deepseek-ai/dsh plugin --profile epcd add "@linxin666/dsh-ssh"
 
 ## UI 插件「三处同步」约定
 
-改 `plugins/epcd-ui-persist/`（canonical 源）后，需同步三处（两个安装脚本已自动化）：
+改 `epcd-dsh/plugin/`（canonical 源）后，需同步三处（两个安装脚本已自动化）：
 
 1. `~/.dsh/profiles/epcd/packages/epcd-ui-plugin/`
 2. `~/.dsh/profiles/epcd/node_modules/epcd-ui-plugin/`

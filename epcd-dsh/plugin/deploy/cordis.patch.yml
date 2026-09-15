@@ -56,7 +56,13 @@
     - id: epcd-ui-plugin
       name: epcd-ui-plugin
 
-# ── EPCD 专用 branding：title/favicon/manifest + 隐藏 DeepSeek slogan（本地插件）──
+# ── EPCD 专用 branding：title/favicon/manifest + 隐藏 DeepSeek slogan + logo（本地插件）──
 - insert:
     - id: epcd-brand
       name: ./epcd-brand.mjs
+
+# ── EPCD UI 锁定：固定单工作区（隐藏添加/切换入口）、隐藏预设模式切换、
+#    默认隐藏 LLM 思考块、右侧边栏文件树隐藏所有 dotfile 目录（本地插件，CSS+JS 注入）──
+- insert:
+    - id: epcd-ui-lock
+      name: ./epcd-ui-lock.mjs

@@ -23,35 +23,33 @@ echo "== EPCD 形态 A 部署（Linux）=="
 echo "  仓库根: $REPO_ROOT"
 echo "  DSH home: $DSH_HOME"
 
-# ── 1. profile：权威源 = plugins/epcd-ui-persist/deploy/（完整 cordis.patch.yml
-#      含 epcd-ui-plugin 挂载 + 存储隔离 + branding）+ platform-dsh/profile/ 的
-#      favicon 与 pnpm-workspace（deploy 目录缺这两份）。
-#      注：platform-dsh/profile/cordis.patch.yml 是旧版（缺 epcd-ui-plugin insert
-#      与存储隔离），不要用它。
+# ── 1. profile：权威源 = epcd-dsh/plugin/deploy/（完整 cordis.patch.yml
+#      含 epcd-ui-plugin 挂载 + 存储隔离 + branding + favicon/pnpm-workspace + logo）。
 PROFILE_DST="$DSH_HOME/profiles/epcd"
-DEPLOY_SRC="$REPO_ROOT/plugins/epcd-ui-persist/deploy"
-PFP_SRC="$REPO_ROOT/platform-dsh/profile"
+DEPLOY_SRC="$REPO_ROOT/epcd-dsh/plugin/deploy"
 mkdir -p "$PROFILE_DST"
 cp "$DEPLOY_SRC/cordis.patch.yml"       "$PROFILE_DST/"
 cp "$DEPLOY_SRC/epcd-brand.mjs"         "$PROFILE_DST/"
+cp "$DEPLOY_SRC/epcd-ui-lock.mjs"       "$PROFILE_DST/"
+cp "$DEPLOY_SRC/epcd-logo.png"          "$PROFILE_DST/"
 cp "$DEPLOY_SRC/profile-package.json"   "$PROFILE_DST/package.json"
-cp "$PFP_SRC/epcd-favicon.svg"          "$PROFILE_DST/"
-cp "$PFP_SRC/pnpm-workspace.yaml"       "$PROFILE_DST/"
+cp "$DEPLOY_SRC/epcd-favicon.svg"       "$PROFILE_DST/"
+cp "$DEPLOY_SRC/pnpm-workspace.yaml"    "$PROFILE_DST/"
 echo "  [1/5] profile -> $PROFILE_DST（完整版 cordis.patch + branding + package.json）"
 
 # ── 2. agent preset（persona + 精简工具集）─────────────────────────────────
 PRESET_DST="$DSH_HOME/.agent-presets/epcd"
 mkdir -p "$PRESET_DST"
-cp -r "$REPO_ROOT/platform-dsh/agent-preset/." "$PRESET_DST/"
+cp -r "$REPO_ROOT/epcd-dsh/agent-preset/." "$PRESET_DST/"
 echo "  [2/5] agent preset -> $PRESET_DST"
 
 # ── 3. EPCD UI 插件：软链部署（单一事实源，幂等）────────────────────────────
-#     插件采用「单一事实源 + 软链」架构：canonical 在 plugins/epcd-ui-persist/lib/，
+#     插件采用「单一事实源 + 软链」架构：canonical 在 epcd-dsh/plugin/lib/，
 #     而 profile 的 packages/epcd-ui-plugin/lib/ 与 node_modules/epcd-ui-plugin/lib/
 #     下的 index.js/client.js 都是软链指向 canonical，改 canonical 即刻生效、无需三处同步。
 #     package.json 不是软链，三处各持一份实体（内容一致），此处用 cp 同步。
 #     幂等：重复执行不覆盖已有软链、不产生 "same file" 警告、不破坏 pnpm 布局。
-PLUGIN_SRC="$REPO_ROOT/plugins/epcd-ui-persist"
+PLUGIN_SRC="$REPO_ROOT/epcd-dsh/plugin"
 LIB_SRC="$PLUGIN_SRC/lib"
 # 把 canonical 的 lib 文件以「软链」镜像到目标目录（幂等：已是正确软链则跳过，否则修正）。
 relink_lib() {
