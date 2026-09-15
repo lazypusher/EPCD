@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # EPCD 形态 A（DSH Agent）一键部署脚本
 #
 # 把仓库里的 EPCD profile / agent preset / UI 插件复制到本机 DSH home，
@@ -29,10 +29,11 @@ Write-Host "  DSH home: $DshHome"
 $ProfileDst = Join-Path $DshHome 'profiles\epcd'
 $DeploySrc  = Join-Path $RepoRoot 'epcd-dsh\plugin\deploy'
 New-Item -ItemType Directory -Force -Path $ProfileDst | Out-Null
-# 完整版 cordis.patch.yml / epcd-brand.mjs / epcd-ui-lock.mjs（覆盖旧版）
+# 完整版 cordis.patch.yml / epcd-brand.mjs / epcd-ui-lock.mjs / epcd-workspace.mjs（覆盖旧版）
 Copy-Item (Join-Path $DeploySrc 'cordis.patch.yml') $ProfileDst -Force
 Copy-Item (Join-Path $DeploySrc 'epcd-brand.mjs')   $ProfileDst -Force
 Copy-Item (Join-Path $DeploySrc 'epcd-ui-lock.mjs') $ProfileDst -Force
+Copy-Item (Join-Path $DeploySrc 'epcd-workspace.mjs') $ProfileDst -Force
 # 左上角品牌 logo（epcd-brand.mjs 以 base64 内联读取，需随 profile 一起落地）
 Copy-Item (Join-Path $DeploySrc 'epcd-logo.png')    $ProfileDst -Force
 # profile-package.json 改名为 package.json（含 epcd-ui-plugin + dsh-ssh 依赖）
@@ -140,4 +141,5 @@ Write-Host ""
 Write-Host "部署完成。" -ForegroundColor Green
 Write-Host "  下一步（一次性）：编辑/确认 $RepoRoot\epcd-configs.json 的 host/port/user/identityFile/pkg/technology/workDirRoot"
 Write-Host "  启动：npx @deepseek-ai/dsh --profile epcd --port 8091  （headless 服务器加 EPCD_HOST=0.0.0.0 前缀）"
+Write-Host "  固定工作区：启动前设 `$env:EPCD_WORKSPACE = '$RepoRoot'（或 EPCD_WORKSPACE env 指向仓库根，消除首屏「加载工作区」提示）"
 Write-Host "  浏览器：http://127.0.0.1:8091"

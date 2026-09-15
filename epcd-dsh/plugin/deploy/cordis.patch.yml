@@ -66,3 +66,8 @@
 - insert:
     - id: epcd-ui-lock
       name: ./epcd-ui-lock.mjs
+
+# ── EPCD 固定工作区：启动时把项目根目录登记为工作区（消除首屏空状态提示）──
+- insert:
+    - id: epcd-workspace
+      name: ./epcd-workspace.mjs
